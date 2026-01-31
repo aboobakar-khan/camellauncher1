@@ -1,0 +1,991 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
+import '../providers/theme_provider.dart';
+import '../providers/font_provider.dart';
+import '../providers/font_size_provider.dart';
+import '../providers/clock_style_provider.dart';
+import '../providers/time_format_provider.dart';
+import '../providers/clock_opacity_provider.dart';
+import '../providers/wallpaper_provider.dart';
+import '../providers/app_interrupt_provider.dart';
+import '../providers/focus_mode_provider.dart';
+import '../providers/arabic_font_provider.dart';
+import '../providers/premium_provider.dart';
+import '../providers/tafseer_edition_provider.dart';
+import 'theme_color_picker_screen.dart';
+import 'font_picker_screen.dart';
+import 'clock_style_picker_screen.dart';
+import 'wallpaper_picker_screen.dart';
+import 'app_interrupt_settings_screen.dart';
+import 'focus_mode_settings_screen.dart';
+import 'hidden_apps_screen.dart';
+import 'debug_apps_screen.dart';
+import 'premium_screen.dart';
+import 'privacy_policy_screen.dart';
+import 'credits_screen.dart';
+
+/// Settings Screen - Customization options
+class SettingsScreen extends ConsumerWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentTheme = ref.watch(themeColorProvider);
+    final currentFont = ref.watch(fontProvider);
+    final currentFontSize = ref.watch(fontSizeProvider);
+    final currentClockStyle = ref.watch(clockStyleProvider);
+    final currentTimeFormat = ref.watch(timeFormatProvider);
+    final currentClockOpacity = ref.watch(clockOpacityProvider);
+    final currentWallpaper = ref.watch(wallpaperProvider);
+    final currentArabicFont = ref.watch(arabicFontProvider);
+    final isPremium = ref.watch(premiumProvider);
+
+    // Find current font size preset name
+    final fontSizePreset = fontSizePresets.firstWhere(
+      (preset) => preset.scale == currentFontSize,
+      orElse: () => fontSizePresets[1], // Default to Normal
+    );
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            _buildHeader(context),
+
+            // Settings list
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  // Premium banner (only show if not premium)
+                  if (!isPremium) ...[
+                    _buildPremiumBanner(
+                      context,
+                      AppThemeColor(
+                        color: Colors.amber,
+                        name: 'Amber',
+                        accentColor: Colors.amberAccent,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  _buildSettingsSection(
+                    title: 'APPEARANCE',
+                    items: [
+                      _buildSettingsItem(
+                        icon: Icons.font_download,
+                        title: 'Font Style',
+                        subtitle: currentFont.name,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const FontPickerScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.format_size,
+                        title: 'Font Size',
+                        subtitle: fontSizePreset.name,
+                        onTap: () {
+                          _showFontSizeDialog(context, ref);
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.wallpaper,
+                        title: 'Wallpaper',
+                        subtitle: currentWallpaper.name,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const WallpaperPickerScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.palette,
+                        title: 'Theme Color',
+                        subtitle: currentTheme.name,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const ThemeColorPickerScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.access_time,
+                        title: 'Clock Style',
+                        subtitle: currentClockStyle.name,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const ClockStylePickerScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.schedule,
+                        title: 'Time Format',
+                        subtitle: currentTimeFormat.name,
+                        onTap: () {
+                          _showTimeFormatDialog(
+                            context,
+                            ref,
+                            currentTimeFormat,
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.opacity,
+                        title: 'Clock Opacity',
+                        subtitle: currentClockOpacity.name,
+                        onTap: () {
+                          _showClockOpacityDialog(
+                            context,
+                            ref,
+                            currentClockOpacity,
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(
+                    title: 'QURAN',
+                    items: [
+                      _buildSettingsItem(
+                        icon: Icons.text_fields,
+                        title: 'Arabic Font',
+                        subtitle: currentArabicFont.name,
+                        onTap: () {
+                          _showArabicFontDialog(context, ref);
+                        },
+                      ),
+                      Consumer(
+                        builder: (context, ref, _) {
+                          final selectedEdition = ref.watch(selectedTafseerEditionProvider);
+                          return _buildSettingsItem(
+                            icon: Icons.menu_book,
+                            title: 'Tafseer Edition',
+                            subtitle: selectedEdition.name,
+                            onTap: () {
+                              _showTafseerEditionDialog(context, ref);
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(
+                    title: 'WIDGETS',
+                    items: [
+                      _buildSettingsItem(
+                        icon: Icons.dashboard,
+                        title: 'Widget Layout',
+                        subtitle: 'Coming soon',
+                        onTap: () {
+                          // TODO: Implement widget customization
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(
+                    title: 'DIGITAL WELLBEING',
+                    items: [
+                      _buildSettingsItem(
+                        icon: Icons.app_blocking,
+                        title: 'App Interrupts',
+                        subtitle: _getInterruptsSummary(ref),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const AppInterruptSettingsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.lock_clock,
+                        title: 'Focus Mode',
+                        subtitle: _getFocusModeSummary(ref),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const FocusModeSettingsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.visibility_off,
+                        title: 'Hidden Apps',
+                        subtitle: 'Manage hidden and filtered apps',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const HiddenAppsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.bug_report,
+                        title: 'Debug: All Apps',
+                        subtitle: 'View all installed apps with package names',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const DebugAppsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(
+                    title: 'SYSTEM',
+                    items: [
+                      _buildSettingsItem(
+                        icon: Icons.home,
+                        title: 'Change Default Launcher',
+                        subtitle: 'Set as default home app',
+                        onTap: () {
+                          _openHomeLauncherSettings(context);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(
+                    title: 'PREMIUM',
+                    items: [
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const PremiumScreen(),
+                            ),
+                          );
+                        },
+                        onLongPress: isPremium
+                            ? () async {
+                                // Long press to reset premium (for testing)
+                                await ref
+                                    .read(premiumProvider.notifier)
+                                    .clearPremiumData();
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Premium status cleared'),
+                                      duration: Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
+                              }
+                            : null,
+                        child: _buildSettingsItem(
+                          icon: Icons.star,
+
+                          title: isPremium
+                              ? 'Premium Active'
+                              : 'Unlock Pro Version',
+                          subtitle: isPremium
+                              ? 'All features unlocked (Long press to reset)'
+                              : 'Get access to all premium features',
+                          onTap: null, // Handled by parent GestureDetector
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(
+                    title: 'ABOUT',
+                    items: [
+                      _buildSettingsItem(
+                        icon: Icons.info_outline,
+                        title: 'Version',
+                        subtitle: '1.0.0',
+                        onTap: null,
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.menu_book,
+                        title: 'Credits & Licenses',
+                        subtitle: 'Qur\'an sources and attributions',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const CreditsScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildSettingsItem(
+                        icon: Icons.privacy_tip_outlined,
+                        title: 'Privacy Policy',
+                        subtitle: 'How we handle your data',
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const PrivacyPolicyScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getInterruptsSummary(WidgetRef ref) {
+    final interrupts = ref.watch(appInterruptProvider);
+    final enabledCount = interrupts.values.where((i) => i.isEnabled).length;
+
+    if (enabledCount == 0) {
+      return 'Reduce distractions from apps';
+    } else if (enabledCount == 1) {
+      return '1 app has an interrupt';
+    } else {
+      return '$enabledCount apps have interrupts';
+    }
+  }
+
+  String _getFocusModeSummary(WidgetRef ref) {
+    final focusMode = ref.watch(focusModeProvider);
+
+    if (focusMode.isEnabled) {
+      return 'Active • ${focusMode.allowedApps.length} apps allowed';
+    } else if (focusMode.allowedApps.isEmpty) {
+      return 'Block distracting apps during focus';
+    } else {
+      return '${focusMode.allowedApps.length} apps configured';
+    }
+  }
+
+  void _openHomeLauncherSettings(BuildContext context) async {
+    try {
+      // Open Android home screen settings using platform channel
+      const platform = MethodChannel('com.example.minimalist_app/launcher');
+      await platform.invokeMethod('openHomeLauncherSettings');
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open launcher settings: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: Icon(
+              Icons.arrow_back,
+              color: Colors.white.withValues(alpha: 0.7),
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            'SETTINGS',
+            style: TextStyle(
+              fontSize: 20,
+              letterSpacing: 4,
+              fontWeight: FontWeight.w300,
+              color: Colors.white.withValues(alpha: 0.9),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsSection({
+    required String title,
+    required List<Widget> items,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              letterSpacing: 2,
+              fontWeight: FontWeight.w400,
+              color: Colors.white.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+        ...items,
+      ],
+    );
+  }
+
+  void _showFontSizeDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a1a),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        title: Text(
+          'FONT SIZE',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.9),
+            fontSize: 16,
+            letterSpacing: 2,
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: fontSizePresets.map((preset) {
+            return ListTile(
+              title: Text(
+                preset.name,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 14 * preset.scale,
+                ),
+              ),
+              trailing: ref.watch(fontSizeProvider) == preset.scale
+                  ? Icon(
+                      Icons.check,
+                      color: Colors.white.withValues(alpha: 0.7),
+                    )
+                  : null,
+              onTap: () {
+                ref.read(fontSizeProvider.notifier).setFontSize(preset.scale);
+                Navigator.of(context).pop();
+              },
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _showArabicFontDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1a1a1a),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+        ),
+        title: Text(
+          'ARABIC FONT',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.9),
+            fontSize: 16,
+            letterSpacing: 2,
+            fontWeight: FontWeight.w300,
+          ),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: ArabicFonts.all.length,
+            itemBuilder: (context, index) {
+              final font = ArabicFonts.all[index];
+              final isSelected =
+                  ref.watch(arabicFontProvider).name == font.name;
+
+              return ListTile(
+                title: Text(
+                  font.name,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    fontSize: 14,
+                  ),
+                ),
+                subtitle: Text(
+                  'بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ',
+                  textDirection: TextDirection.rtl,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontSize: 16,
+                    fontFamily: font.fontFamily,
+                  ),
+                ),
+                trailing: isSelected
+                    ? Icon(
+                        Icons.check,
+                        color: Colors.white.withValues(alpha: 0.7),
+                      )
+                    : null,
+                onTap: () {
+                  ref.read(arabicFontProvider.notifier).setFont(font);
+                  Navigator.of(context).pop();
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showTafseerEditionDialog(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (context) => Consumer(
+        builder: (context, ref, _) {
+          final editionsAsync = ref.watch(tafseerEditionsProvider);
+          final selectedEdition = ref.watch(selectedTafseerEditionProvider);
+
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1a1a1a),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+            ),
+            title: Text(
+              'TAFSEER EDITION',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 16,
+                letterSpacing: 2,
+                fontWeight: FontWeight.w300,
+              ),
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              height: 400,
+              child: editionsAsync.when(
+                data: (editions) {
+                  // Filter to show English editions first, then others
+                  final sortedEditions = [...editions];
+                  sortedEditions.sort((a, b) {
+                    if (a.language.toLowerCase() == 'english' && b.language.toLowerCase() != 'english') {
+                      return -1;
+                    } else if (a.language.toLowerCase() != 'english' && b.language.toLowerCase() == 'english') {
+                      return 1;
+                    }
+                    return a.name.compareTo(b.name);
+                  });
+
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: sortedEditions.length,
+                    itemBuilder: (context, index) {
+                      final edition = sortedEditions[index];
+                      final isSelected = selectedEdition.slug == edition.slug;
+
+                      return ListTile(
+                        title: Text(
+                          edition.name,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 14,
+                          ),
+                        ),
+                        subtitle: Text(
+                          '${edition.authorName} • ${edition.language}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 12,
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(
+                                Icons.check,
+                                color: Color(0xFF40C463),
+                              )
+                            : null,
+                        onTap: () {
+                          ref.read(selectedTafseerEditionProvider.notifier).setEdition(edition);
+                          Navigator.of(context).pop();
+                        },
+                      );
+                    },
+                  );
+                },
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: Color(0xFF40C463)),
+                ),
+                error: (_, __) => Center(
+                  child: Text(
+                    'Could not load editions',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSettingsItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white.withValues(alpha: 0.5), size: 22),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 15,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      fontSize: 12,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (onTap != null)
+              Icon(
+                Icons.chevron_right,
+                color: Colors.white.withValues(alpha: 0.3),
+                size: 20,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showTimeFormatDialog(
+    BuildContext context,
+    WidgetRef ref,
+    TimeFormat currentFormat,
+  ) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1a1a1a),
+          title: const Text(
+            'Select Time Format',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildTimeFormatOption(
+                context,
+                ref,
+                '12-Hour (AM/PM)',
+                TimeFormat.hour12,
+                currentFormat,
+              ),
+              const SizedBox(height: 8),
+              _buildTimeFormatOption(
+                context,
+                ref,
+                '24-Hour',
+                TimeFormat.hour24,
+                currentFormat,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTimeFormatOption(
+    BuildContext context,
+    WidgetRef ref,
+    String label,
+    TimeFormat format,
+    TimeFormat currentFormat,
+  ) {
+    final isSelected = format == currentFormat;
+    return InkWell(
+      onTap: () {
+        ref.read(timeFormatProvider.notifier).setTimeFormat(format);
+        Navigator.of(context).pop();
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.white.withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected
+                ? Colors.white.withValues(alpha: 0.3)
+                : Colors.white.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.4),
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.7),
+                fontSize: 15,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showClockOpacityDialog(
+    BuildContext context,
+    WidgetRef ref,
+    ClockOpacity currentOpacity,
+  ) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1a1a1a),
+          title: const Text(
+            'Select Clock Opacity',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildClockOpacityOption(
+                context,
+                ref,
+                ClockOpacity.low,
+                currentOpacity,
+              ),
+              const SizedBox(height: 8),
+              _buildClockOpacityOption(
+                context,
+                ref,
+                ClockOpacity.medium,
+                currentOpacity,
+              ),
+              const SizedBox(height: 8),
+              _buildClockOpacityOption(
+                context,
+                ref,
+                ClockOpacity.high,
+                currentOpacity,
+              ),
+              const SizedBox(height: 8),
+              _buildClockOpacityOption(
+                context,
+                ref,
+                ClockOpacity.veryHigh,
+                currentOpacity,
+              ),
+              const SizedBox(height: 8),
+              _buildClockOpacityOption(
+                context,
+                ref,
+                ClockOpacity.ultraHigh,
+                currentOpacity,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildClockOpacityOption(
+    BuildContext context,
+    WidgetRef ref,
+    ClockOpacity opacity,
+    ClockOpacity currentOpacity,
+  ) {
+    final isSelected = opacity == currentOpacity;
+    return InkWell(
+      onTap: () {
+        ref.read(clockOpacityProvider.notifier).setOpacity(opacity);
+        Navigator.of(context).pop();
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Colors.white.withValues(alpha: 0.1)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected
+                ? Colors.white.withValues(alpha: 0.3)
+                : Colors.white.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: isSelected
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.4),
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              opacity.name,
+              style: TextStyle(
+                color: isSelected
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.7),
+                fontSize: 15,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPremiumBanner(BuildContext context, AppThemeColor currentTheme) {
+    return InkWell(
+      onTap: () {
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (context) => const PremiumScreen()));
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              currentTheme.color.withValues(alpha: 0.2),
+              currentTheme.color.withValues(alpha: 0.05),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: currentTheme.color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: currentTheme.color.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.star, color: currentTheme.color, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'UNLOCK PREMIUM',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Get all features & premium themes',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, color: currentTheme.color, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,426 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:installed_apps/installed_apps.dart';
+import '../providers/theme_provider.dart';
+import '../providers/clock_style_provider.dart';
+import '../providers/time_format_provider.dart';
+import '../providers/clock_opacity_provider.dart';
+import '../providers/favorite_apps_provider.dart';
+import '../providers/app_interrupt_provider.dart';
+import '../providers/focus_mode_provider.dart';
+import '../providers/installed_apps_provider.dart';
+import '../providers/quick_action_provider.dart';
+import '../services/app_settings_service.dart';
+import '../widgets/app_interrupt_dialog.dart';
+import '../widgets/clock_variants.dart';
+
+/// Home Clock Screen - Minimalist clock and date display
+class HomeClockScreen extends ConsumerStatefulWidget {
+  const HomeClockScreen({super.key});
+
+  @override
+  ConsumerState<HomeClockScreen> createState() => _HomeClockScreenState();
+}
+
+class _HomeClockScreenState extends ConsumerState<HomeClockScreen> {
+  late Timer _timer;
+  DateTime _currentTime = DateTime.now();
+  // No cache needed - favorites stored permanently in Hive with app names
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _currentTime = DateTime.now();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  Future<void> _launchApp(String packageName) async {
+    // Check if focus mode is blocking this app
+    final focusModeNotifier = ref.read(focusModeProvider.notifier);
+    if (focusModeNotifier.isAppBlocked(packageName)) {
+      final focusMode = ref.read(focusModeProvider);
+      _showFocusModeBlockDialog(
+        focusMode.blockMessage ?? 'Focus mode is active. This app is blocked.',
+      );
+      return;
+    }
+
+    // Check if app has an interrupt configured
+    final interruptNotifier = ref.read(appInterruptProvider.notifier);
+    final interrupt = interruptNotifier.getInterrupt(packageName);
+
+    if (interrupt != null && interrupt.isEnabled) {
+      // Show interrupt dialog
+      final shouldProceed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) =>
+            AppInterruptDialog(interrupt: interrupt, onSuccess: () {}),
+      );
+
+      if (shouldProceed != true) {
+        return; // User cancelled
+      }
+    }
+
+    // Launch the app
+    try {
+      // Special handling for Google Pay - use native intent
+      if (packageName.contains('paisa') || packageName.contains('pay')) {
+        await AppSettingsService.launchGooglePay();
+      } else {
+        await InstalledApps.startApp(packageName);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Cannot open app: $e')));
+      }
+    }
+  }
+
+  void _showFocusModeBlockDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Row(
+          children: [
+            Icon(Icons.lock_clock, color: Colors.orange.shade400),
+            const SizedBox(width: 12),
+            const Text(
+              'Focus Mode Active',
+              style: TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        content: Text(message, style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeColor = ref.watch(themeColorProvider);
+    final clockStyle = ref.watch(clockStyleProvider);
+    final timeFormat = ref.watch(timeFormatProvider);
+    final clockOpacity = ref.watch(clockOpacityProvider);
+    final favorites = ref.watch(favoriteAppsProvider);
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight:
+                MediaQuery.of(context).size.height -
+                MediaQuery.of(context).padding.top,
+          ),
+          child: Stack(
+            children: [
+              // Main content
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 50),
+
+                  // Clock widget based on selected style at top center
+                  Center(
+                    child: _buildClockWidget(
+                      clockStyle,
+                      themeColor,
+                      timeFormat,
+                      clockOpacity.value,
+                    ),
+                  ),
+
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+
+                  const SizedBox(height: 40),
+                ],
+              ),
+
+              // Favorite apps at the bottom
+              if (favorites.isNotEmpty)
+                Positioned(
+                  left: 20,
+                  right: 20,
+                  bottom: 59 + MediaQuery.of(context).padding.bottom,
+                  child: _buildFavoriteApps(themeColor),
+                ),
+
+              // Quick action buttons at the corners bottom
+              // Phone button - left corner
+              Positioned(
+                left: 20,
+                bottom: 16 + MediaQuery.of(context).padding.bottom,
+                child: GestureDetector(
+                  onTap: () => _handleQuickAction(
+                    'phone',
+                    ref.read(quickActionProvider).phoneApp,
+                    themeColor,
+                  ),
+                  onLongPress: () =>
+                      _showAppSelectionDialog('phone', themeColor),
+                  child: Icon(
+                    Icons.call,
+                    size: 28,
+                    color: themeColor.color.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+
+              // Camera button - right corner
+              Positioned(
+                right: 20,
+                bottom: 16 + MediaQuery.of(context).padding.bottom,
+                child: GestureDetector(
+                  onTap: () => _handleQuickAction(
+                    'camera',
+                    ref.read(quickActionProvider).cameraApp,
+                    themeColor,
+                  ),
+                  onLongPress: () =>
+                      _showAppSelectionDialog('camera', themeColor),
+                  child: Icon(
+                    Icons.camera_alt,
+                    size: 28,
+                    color: themeColor.color.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildClockWidget(
+    ClockStyle style,
+    AppThemeColor themeColor,
+    TimeFormat timeFormat,
+    double opacityMultiplier,
+  ) {
+    switch (style) {
+      case ClockStyle.digital:
+        return DigitalClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          timeFormat: timeFormat,
+          opacityMultiplier: opacityMultiplier,
+        );
+      case ClockStyle.analog:
+        return AnalogClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          opacityMultiplier: opacityMultiplier,
+        );
+      case ClockStyle.minimalist:
+        return MinimalistClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          timeFormat: timeFormat,
+          opacityMultiplier: opacityMultiplier,
+        );
+      case ClockStyle.bold:
+        return BoldClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          timeFormat: timeFormat,
+          opacityMultiplier: opacityMultiplier,
+        );
+      case ClockStyle.compact:
+        return CompactClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          timeFormat: timeFormat,
+          opacityMultiplier: opacityMultiplier,
+        );
+      case ClockStyle.modern:
+        return ModernClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          timeFormat: timeFormat,
+          opacityMultiplier: opacityMultiplier,
+        );
+      case ClockStyle.retro:
+        return RetroClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          timeFormat: timeFormat,
+          opacityMultiplier: opacityMultiplier,
+        );
+      case ClockStyle.elegant:
+        return ElegantClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          timeFormat: timeFormat,
+          opacityMultiplier: opacityMultiplier,
+        );
+      case ClockStyle.binary:
+        return BinaryClockWidget(
+          time: _currentTime,
+          themeColor: themeColor,
+          timeFormat: timeFormat,
+          opacityMultiplier: opacityMultiplier,
+        );
+    }
+  }
+
+  Widget _buildFavoriteApps(AppThemeColor themeColor) {
+    // Get favorites directly from provider - instant, no cache, no API calls
+    final favorites = ref.watch(favoriteAppsProvider);
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.only(bottom: 25),
+            child: Text(
+              'FAVORITES',
+              style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 2,
+                fontWeight: FontWeight.w400,
+                color: themeColor.color.withValues(alpha: 0.4),
+              ),
+            ),
+          ),
+
+          // Favorite app names (text-only, instant performance)
+          ...(favorites
+              .take(7)
+              .map(
+                (favoriteApp) => Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: GestureDetector(
+                    onTap: () => _launchApp(favoriteApp.packageName),
+                    child: Text(
+                      favoriteApp.appName,
+                      style: TextStyle(
+                        fontSize: 16,
+                        letterSpacing: 1,
+                        fontWeight: FontWeight.w300,
+                        color: themeColor.color.withValues(alpha: 1.0),
+                      ),
+                    ),
+                  ),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleQuickAction(
+    String actionType,
+    String? selectedApp,
+    AppThemeColor themeColor,
+  ) async {
+    if (selectedApp == null) {
+      // Show app selection dialog
+      _showAppSelectionDialog(actionType, themeColor);
+    } else {
+      // Launch the saved app
+      _launchApp(selectedApp);
+    }
+  }
+
+  Future<void> _showAppSelectionDialog(
+    String actionType,
+    AppThemeColor themeColor,
+  ) async {
+    final installedApps = ref.read(installedAppsProvider);
+
+    if (installedApps.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No apps available'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: Text(
+          'Select ${actionType == 'phone' ? 'Phone' : 'Camera'} App',
+          style: const TextStyle(color: Colors.white),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            itemCount: installedApps.length,
+            itemBuilder: (context, index) {
+              final app = installedApps[index];
+              return ListTile(
+                title: Text(
+                  app.appName,
+                  style: TextStyle(
+                    color: themeColor.color.withValues(alpha: 0.9),
+                    fontSize: 14,
+                  ),
+                ),
+
+                onTap: () async {
+                  // Save the selection
+                  if (actionType == 'phone') {
+                    await ref
+                        .read(quickActionProvider.notifier)
+                        .setPhoneApp(app.packageName);
+                  } else {
+                    await ref
+                        .read(quickActionProvider.notifier)
+                        .setCameraApp(app.packageName);
+                  }
+
+                  if (!context.mounted) return;
+
+                  Navigator.pop(context);
+
+                  if (!context.mounted) return;
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '${app.appName} set for ${actionType == 'phone' ? 'Phone' : 'Camera'}',
+                      ),
+                      backgroundColor: Colors.green.shade700,
+                      duration: const Duration(seconds: 2),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}

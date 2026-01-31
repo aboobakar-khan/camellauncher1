@@ -1,0 +1,495 @@
+import 'dart:convert';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../models/hadith_dua_models.dart';
+import '../services/hadith_dua_service.dart';
+
+/// Service provider
+final hadithDuaServiceProvider = Provider((ref) => HadithDuaService());
+
+/// Provider for daily random hadith
+final dailyHadithProvider = FutureProvider<Hadith?>((ref) async {
+  final service = ref.read(hadithDuaServiceProvider);
+  
+  // Check if we have a cached daily hadith
+  final box = await Hive.openBox<String>('hadith_dua_cache');
+  final today = DateTime.now().toIso8601String().split('T')[0];
+  final cachedKey = 'daily_hadith_$today';
+  
+  final cached = box.get(cachedKey);
+  if (cached != null) {
+    try {
+      final json = jsonDecode(cached) as Map<String, dynamic>;
+      return Hadith.fromJson(json, collection: json['collection'] as String? ?? '');
+    } catch (e) {
+      // Continue to fetch new one
+    }
+  }
+
+  // Fetch random hadith from Bukhari (default)
+  final hadith = await service.getRandomHadith(collectionId: 'bukhari');
+  
+  if (hadith != null) {
+    await box.put(cachedKey, jsonEncode(hadith.toJson()));
+  }
+  
+  return hadith;
+});
+
+/// Provider for daily random dua
+final dailyDuaProvider = Provider<Dua>((ref) {
+  final service = ref.read(hadithDuaServiceProvider);
+  
+  // Get a random dua each day based on day of year
+  final dayOfYear = DateTime.now().difference(DateTime(DateTime.now().year, 1, 1)).inDays;
+  final duas = service.getCuratedDuas();
+  return duas[dayOfYear % duas.length];
+});
+
+/// Provider for all duas
+final allDuasProvider = Provider<List<Dua>>((ref) {
+  final service = ref.read(hadithDuaServiceProvider);
+  return service.getCuratedDuas();
+});
+
+/// Provider for dua categories
+final duaCategoriesProvider = Provider<List<String>>((ref) {
+  final duas = ref.watch(allDuasProvider);
+  final categories = duas.map((d) => d.category ?? 'Other').toSet().toList();
+  categories.sort();
+  return categories;
+});
+
+/// Provider for duas by category
+final duasByCategoryProvider = Provider.family<List<Dua>, String>((ref, category) {
+  final duas = ref.watch(allDuasProvider);
+  return duas.where((d) => d.category == category).toList();
+});
+
+/// Search state
+class SearchState {
+  final String query;
+  final bool isSearching;
+  final List<Hadith> hadithResults;
+  final List<Dua> duaResults;
+  final bool isLoading;
+
+  SearchState({
+    this.query = '',
+    this.isSearching = false,
+    this.hadithResults = const [],
+    this.duaResults = const [],
+    this.isLoading = false,
+  });
+
+  SearchState copyWith({
+    String? query,
+    bool? isSearching,
+    List<Hadith>? hadithResults,
+    List<Dua>? duaResults,
+    bool? isLoading,
+  }) {
+    return SearchState(
+      query: query ?? this.query,
+      isSearching: isSearching ?? this.isSearching,
+      hadithResults: hadithResults ?? this.hadithResults,
+      duaResults: duaResults ?? this.duaResults,
+      isLoading: isLoading ?? this.isLoading,
+    );
+  }
+}
+
+/// Search provider
+final searchStateProvider = StateNotifierProvider<SearchNotifier, SearchState>((ref) {
+  return SearchNotifier(ref);
+});
+
+class SearchNotifier extends StateNotifier<SearchState> {
+  final Ref ref;
+  
+  SearchNotifier(this.ref) : super(SearchState());
+
+  void startSearch() {
+    state = state.copyWith(isSearching: true);
+  }
+
+  void endSearch() {
+    state = SearchState();
+  }
+
+  Future<void> search(String query) async {
+    if (query.isEmpty) {
+      state = state.copyWith(
+        query: '',
+        hadithResults: [],
+        duaResults: [],
+        isLoading: false,
+      );
+      return;
+    }
+
+    state = state.copyWith(query: query, isLoading: true);
+
+    final service = ref.read(hadithDuaServiceProvider);
+    
+    // Search duas immediately (local)
+    final duaResults = service.searchDuas(query);
+    state = state.copyWith(duaResults: duaResults);
+    
+    // Search hadiths (network)
+    try {
+      final hadithResults = await service.searchHadiths(query);
+      state = state.copyWith(hadithResults: hadithResults, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(isLoading: false);
+    }
+  }
+}
+
+/// Bookmarks state with collections support
+class BookmarksState {
+  final List<Hadith> bookmarkedHadiths;
+  final List<Dua> bookmarkedDuas;
+  final List<String> collections; // User-created collections
+
+  BookmarksState({
+    this.bookmarkedHadiths = const [],
+    this.bookmarkedDuas = const [],
+    this.collections = const ['Favorites', 'To Read', 'Memorize', 'Share'],
+  });
+
+  /// Get hadiths in a specific collection
+  List<Hadith> getHadithsInCollection(String collectionName) {
+    return bookmarkedHadiths
+        .where((h) => h.bookmarkCollection == collectionName)
+        .toList();
+  }
+
+  /// Get duas in a specific collection
+  List<Dua> getDuasInCollection(String collectionName) {
+    return bookmarkedDuas
+        .where((d) => d.bookmarkCollection == collectionName)
+        .toList();
+  }
+}
+
+/// Bookmarks provider with collections
+final bookmarksProvider = StateNotifierProvider<BookmarksNotifier, BookmarksState>((ref) {
+  return BookmarksNotifier();
+});
+
+class BookmarksNotifier extends StateNotifier<BookmarksState> {
+  static const String _boxName = 'hadith_dua_bookmarks';
+  Box<String>? _box;
+
+  BookmarksNotifier() : super(BookmarksState()) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    _box = await Hive.openBox<String>(_boxName);
+    _loadBookmarks();
+  }
+
+  void _loadBookmarks() {
+    final hadithsJson = _box?.get('hadiths');
+    final duasJson = _box?.get('duas');
+    final collectionsJson = _box?.get('collections');
+
+    final hadiths = <Hadith>[];
+    final duas = <Dua>[];
+    var collections = BookmarksState().collections;
+
+    if (hadithsJson != null) {
+      try {
+        final list = jsonDecode(hadithsJson) as List<dynamic>;
+        for (final item in list) {
+          final json = item as Map<String, dynamic>;
+          hadiths.add(Hadith.fromJson(json, collection: json['collection'] as String? ?? ''));
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    if (duasJson != null) {
+      try {
+        final list = jsonDecode(duasJson) as List<dynamic>;
+        for (final item in list) {
+          duas.add(Dua.fromJson(item as Map<String, dynamic>));
+        }
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    if (collectionsJson != null) {
+      try {
+        collections = (jsonDecode(collectionsJson) as List<dynamic>).cast<String>();
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    state = BookmarksState(
+      bookmarkedHadiths: hadiths,
+      bookmarkedDuas: duas,
+      collections: collections,
+    );
+  }
+
+  Future<void> _saveBookmarks() async {
+    _box ??= await Hive.openBox<String>(_boxName);
+    await _box!.put('hadiths', jsonEncode(state.bookmarkedHadiths.map((h) => h.toJson()).toList()));
+    await _box!.put('duas', jsonEncode(state.bookmarkedDuas.map((d) => d.toJson()).toList()));
+    await _box!.put('collections', jsonEncode(state.collections));
+  }
+
+  void toggleHadithBookmark(Hadith hadith, {String? collectionName}) {
+    final existing = state.bookmarkedHadiths.any((h) => h.hadithNumber == hadith.hadithNumber && h.collection == hadith.collection);
+    
+    if (existing && collectionName == null) {
+      // Remove from bookmarks
+      state = BookmarksState(
+        bookmarkedHadiths: state.bookmarkedHadiths.where((h) => 
+          !(h.hadithNumber == hadith.hadithNumber && h.collection == hadith.collection)
+        ).toList(),
+        bookmarkedDuas: state.bookmarkedDuas,
+        collections: state.collections,
+      );
+    } else if (existing && collectionName != null) {
+      // Update collection
+      state = BookmarksState(
+        bookmarkedHadiths: state.bookmarkedHadiths.map((h) {
+          if (h.hadithNumber == hadith.hadithNumber && h.collection == hadith.collection) {
+            return h.copyWith(bookmarkCollection: collectionName);
+          }
+          return h;
+        }).toList(),
+        bookmarkedDuas: state.bookmarkedDuas,
+        collections: state.collections,
+      );
+    } else {
+      // Add to bookmarks
+      state = BookmarksState(
+        bookmarkedHadiths: [...state.bookmarkedHadiths, hadith.copyWith(
+          isBookmarked: true,
+          bookmarkCollection: collectionName ?? 'Favorites',
+        )],
+        bookmarkedDuas: state.bookmarkedDuas,
+        collections: state.collections,
+      );
+    }
+    _saveBookmarks();
+  }
+
+  void toggleDuaBookmark(Dua dua, {String? collectionName}) {
+    final existing = state.bookmarkedDuas.any((d) => d.id == dua.id);
+    
+    if (existing && collectionName == null) {
+      state = BookmarksState(
+        bookmarkedHadiths: state.bookmarkedHadiths,
+        bookmarkedDuas: state.bookmarkedDuas.where((d) => d.id != dua.id).toList(),
+        collections: state.collections,
+      );
+    } else if (existing && collectionName != null) {
+      state = BookmarksState(
+        bookmarkedHadiths: state.bookmarkedHadiths,
+        bookmarkedDuas: state.bookmarkedDuas.map((d) {
+          if (d.id == dua.id) {
+            return d.copyWith(bookmarkCollection: collectionName);
+          }
+          return d;
+        }).toList(),
+        collections: state.collections,
+      );
+    } else {
+      state = BookmarksState(
+        bookmarkedHadiths: state.bookmarkedHadiths,
+        bookmarkedDuas: [...state.bookmarkedDuas, dua.copyWith(
+          isBookmarked: true,
+          bookmarkCollection: collectionName ?? 'Favorites',
+        )],
+        collections: state.collections,
+      );
+    }
+    _saveBookmarks();
+  }
+
+  void addCollection(String name) {
+    if (!state.collections.contains(name)) {
+      state = BookmarksState(
+        bookmarkedHadiths: state.bookmarkedHadiths,
+        bookmarkedDuas: state.bookmarkedDuas,
+        collections: [...state.collections, name],
+      );
+      _saveBookmarks();
+    }
+  }
+
+  void removeCollection(String name) {
+    // Don't remove default collections
+    if (['Favorites', 'To Read', 'Memorize', 'Share'].contains(name)) return;
+    
+    state = BookmarksState(
+      bookmarkedHadiths: state.bookmarkedHadiths,
+      bookmarkedDuas: state.bookmarkedDuas,
+      collections: state.collections.where((c) => c != name).toList(),
+    );
+    _saveBookmarks();
+  }
+
+  bool isHadithBookmarked(Hadith hadith) {
+    return state.bookmarkedHadiths.any((h) => 
+      h.hadithNumber == hadith.hadithNumber && h.collection == hadith.collection
+    );
+  }
+
+  bool isDuaBookmarked(Dua dua) {
+    return state.bookmarkedDuas.any((d) => d.id == dua.id);
+  }
+
+  String? getHadithCollection(Hadith hadith) {
+    final bookmarked = state.bookmarkedHadiths.firstWhere(
+      (h) => h.hadithNumber == hadith.hadithNumber && h.collection == hadith.collection,
+      orElse: () => hadith,
+    );
+    return bookmarked.bookmarkCollection;
+  }
+}
+
+/// Selected tab provider
+final hadithDuaTabProvider = StateProvider<int>((ref) => 0); // 0 = Hadith, 1 = Dua
+
+/// Selected collection provider
+final selectedCollectionProvider = StateProvider<String>((ref) => 'bukhari');
+
+/// Selected grade filter
+final selectedGradeFilterProvider = StateProvider<HadithGrade?>((ref) => null);
+
+/// Selected category filter
+final selectedCategoryFilterProvider = StateProvider<HadithCategory?>((ref) => null);
+
+/// Hadiths from selected collection
+final collectionHadithsProvider = FutureProvider<List<Hadith>>((ref) async {
+  final service = ref.read(hadithDuaServiceProvider);
+  final collectionId = ref.watch(selectedCollectionProvider);
+  final gradeFilter = ref.watch(selectedGradeFilterProvider);
+  final categoryFilter = ref.watch(selectedCategoryFilterProvider);
+  
+  final collection = HadithCollection.fromId(collectionId);
+  var hadiths = await service.fetchHadiths(collection);
+  
+  // Apply filters
+  if (gradeFilter != null) {
+    hadiths = hadiths.where((h) => h.grade == gradeFilter).toList();
+  }
+  if (categoryFilter != null) {
+    hadiths = hadiths.where((h) => h.categories.contains(categoryFilter)).toList();
+  }
+  
+  return hadiths;
+});
+
+/// Refresh trigger for daily content
+final refreshTriggerProvider = StateProvider<int>((ref) => 0);
+
+/// Refreshable daily hadith
+final refreshableDailyHadithProvider = FutureProvider<Hadith?>((ref) async {
+  ref.watch(refreshTriggerProvider); // Watch for refresh
+  final service = ref.read(hadithDuaServiceProvider);
+  return await service.getRandomHadith();
+});
+
+/// Refreshable daily dua
+final refreshableDailyDuaProvider = Provider<Dua>((ref) {
+  ref.watch(refreshTriggerProvider); // Watch for refresh
+  final service = ref.read(hadithDuaServiceProvider);
+  return service.getRandomDua();
+});
+
+/// Load more hadiths state
+class LoadMoreHadithsState {
+  final List<Hadith> hadiths;
+  final bool isLoading;
+  final String? collectionId;
+
+  LoadMoreHadithsState({
+    this.hadiths = const [],
+    this.isLoading = false,
+    this.collectionId,
+  });
+}
+
+/// Load more hadiths provider
+final loadMoreHadithsProvider = StateNotifierProvider<LoadMoreHadithsNotifier, LoadMoreHadithsState>((ref) {
+  return LoadMoreHadithsNotifier(ref);
+});
+
+class LoadMoreHadithsNotifier extends StateNotifier<LoadMoreHadithsState> {
+  final Ref ref;
+
+  LoadMoreHadithsNotifier(this.ref) : super(LoadMoreHadithsState());
+
+  Future<void> loadMore({String? collectionId, int count = 5}) async {
+    if (state.isLoading) return;
+    
+    state = LoadMoreHadithsState(
+      hadiths: state.hadiths,
+      isLoading: true,
+      collectionId: collectionId,
+    );
+
+    final service = ref.read(hadithDuaServiceProvider);
+    final excludeNumbers = state.hadiths.map((h) => h.hadithNumber).toList();
+    
+    try {
+      final newHadiths = await service.getMultipleRandomHadiths(
+        collectionId: collectionId,
+        count: count,
+        excludeNumbers: excludeNumbers,
+      );
+      
+      state = LoadMoreHadithsState(
+        hadiths: [...state.hadiths, ...newHadiths],
+        isLoading: false,
+        collectionId: collectionId,
+      );
+    } catch (e) {
+      state = LoadMoreHadithsState(
+        hadiths: state.hadiths,
+        isLoading: false,
+        collectionId: collectionId,
+      );
+    }
+  }
+
+  void clear() {
+    state = LoadMoreHadithsState();
+  }
+}
+
+/// Expanded sections state for hadith cards
+final expandedSectionsProvider = StateProvider<Map<String, Set<String>>>((ref) => {});
+
+/// Helper to check if a section is expanded
+bool isSectionExpanded(WidgetRef ref, String hadithKey, String section) {
+  final expanded = ref.watch(expandedSectionsProvider);
+  return expanded[hadithKey]?.contains(section) ?? false;
+}
+
+/// Toggle section expansion
+void toggleSectionExpanded(WidgetRef ref, String hadithKey, String section) {
+  final notifier = ref.read(expandedSectionsProvider.notifier);
+  final current = Map<String, Set<String>>.from(ref.read(expandedSectionsProvider));
+  
+  if (!current.containsKey(hadithKey)) {
+    current[hadithKey] = {section};
+  } else if (current[hadithKey]!.contains(section)) {
+    current[hadithKey] = Set.from(current[hadithKey]!)..remove(section);
+  } else {
+    current[hadithKey] = Set.from(current[hadithKey]!)..add(section);
+  }
+  
+  notifier.state = current;
+}
