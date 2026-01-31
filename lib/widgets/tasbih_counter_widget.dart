@@ -271,24 +271,6 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
       ],
     );
   }
-
-  Widget _buildAction({required IconData icon, required bool isActive, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Icon(
-        icon,
-        color: isActive 
-            ? const Color(0xFF40C463).withValues(alpha: 0.7)
-            : Colors.white.withValues(alpha: 0.2),
-        size: 20,
-      ),
-    );
-  }
-
-  String _formatNum(int num) {
-    if (num >= 1000) return '${(num / 1000).toStringAsFixed(0)}k';
-    return num.toString();
-  }
 }
 
 /// Minimal Dhikr picker
