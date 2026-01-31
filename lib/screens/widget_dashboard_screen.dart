@@ -4,6 +4,7 @@ import '../widgets/todo_widget.dart';
 import '../widgets/notes_widget.dart';
 import '../widgets/calendar_widget.dart';
 import '../widgets/pomodoro_widget.dart';
+import '../widgets/focus_mode_widget.dart';
 import '../widgets/event_tracker_widget.dart';
 import '../widgets/prayer_tracker_widget.dart';
 import '../widgets/tasbih_counter_widget.dart';
@@ -227,6 +228,9 @@ class WidgetDashboardScreen extends ConsumerWidget {
                       // TODO: Navigate to full pomodoro screen
                     },
                   ),
+
+                  // Focus Mode Widget (near Pomodoro for productivity)
+                  const FocusModeWidget(),
 
                   const SizedBox(height: 16),
 
