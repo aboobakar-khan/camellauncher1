@@ -29,6 +29,9 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
   // For tracking visible verse
   int _currentVisibleAyah = 1;
   bool _hasScrolledToInitial = false;
+  
+  // Reading progress (0.0 to 1.0)
+  double _readingProgress = 0.0;
 
   @override
   void initState() {
@@ -190,26 +193,68 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
             _scrollToAyah(widget.initialAyah!, verses.length);
           }
 
-          return NotificationListener<ScrollNotification>(
-            onNotification: (notification) {
-              // Track which verse is visible
-              // Simple heuristic: calculate based on scroll offset
-              if (notification is ScrollUpdateNotification) {
-                const estimatedCardHeight = 280.0;
-                final offset = notification.metrics.pixels;
-                final visibleAyah = ((offset / estimatedCardHeight) + 1).floor();
-                final clampedAyah = visibleAyah.clamp(1, verses.length);
-                _saveReadingProgress(clampedAyah);
-              }
-              return false;
-            },
-            child: ListView.builder(
-              controller: _scrollController,
-              physics: const BouncingScrollPhysics(
-                decelerationRate: ScrollDecelerationRate.fast,
+          return Column(
+            children: [
+              // Reading progress bar - thin horizontal line
+              Container(
+                height: 3,
+                width: double.infinity,
+                color: Colors.grey[900],
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    height: 3,
+                    width: MediaQuery.of(context).size.width * _readingProgress,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF40C463),
+                          const Color(0xFF40C463).withValues(alpha: 0.7),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
               ),
-              cacheExtent: 800,
-              padding: const EdgeInsets.all(16),
+              
+              // Verses list
+              Expanded(
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    // Track scroll progress
+                    if (notification.metrics.maxScrollExtent > 0) {
+                      final progress = notification.metrics.pixels / 
+                          notification.metrics.maxScrollExtent;
+                      setState(() {
+                        _readingProgress = progress.clamp(0.0, 1.0);
+                      });
+                      
+                      // Calculate visible ayah based on scroll progress
+                      // This is more accurate than fixed card height
+                      final visibleAyah = (progress * verses.length).ceil();
+                      final clampedAyah = visibleAyah.clamp(1, verses.length);
+                      
+                      // If scrolled to near the end (95%+), mark as reading last verse
+                      if (progress >= 0.95) {
+                        _saveReadingProgress(verses.length);
+                      } else {
+                        _saveReadingProgress(clampedAyah);
+                      }
+                    } else {
+                      // Single verse surah or very short content
+                      _saveReadingProgress(verses.length);
+                    }
+                    return false;
+                  },
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    physics: const BouncingScrollPhysics(
+                      decelerationRate: ScrollDecelerationRate.fast,
+                    ),
+                    cacheExtent: 800,
+                    padding: const EdgeInsets.all(16),
               itemCount: verses.length,
               itemBuilder: (context, index) {
                 final verse = verses[index];
@@ -334,6 +379,9 @@ class _SurahReaderScreenState extends ConsumerState<SurahReaderScreen> {
                 );
               },
             ),
+          ),
+        ),
+            ],
           );
         },
         loading: () =>

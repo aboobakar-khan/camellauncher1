@@ -257,6 +257,7 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
                           color: Colors.white.withValues(alpha: 0.3),
                           fontSize: 11,
                           letterSpacing: 1,
+                          decoration: TextDecoration.none, // Remove yellow underline
                         ),
                       ),
                     ),

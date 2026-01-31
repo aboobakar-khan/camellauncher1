@@ -1,9 +1,10 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tasbih_provider.dart';
 
-/// Tasbih Counter Widget - Minimalist design for dhikr counting
+/// Tasbih Counter Widget - Ultra-minimalist design
 class TasbihCounterWidget extends ConsumerStatefulWidget {
   const TasbihCounterWidget({super.key});
 
@@ -20,11 +21,11 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
   void initState() {
     super.initState();
     _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 150),
+      duration: const Duration(milliseconds: 100),
       vsync: this,
     );
     _pulseAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeOut),
     );
   }
 
@@ -37,12 +38,16 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
   void _onTap() {
     HapticFeedback.lightImpact();
     _pulseController.forward().then((_) => _pulseController.reverse());
-    ref.read(tasbihProvider.notifier).increment();
     
     final state = ref.read(tasbihProvider);
-    // Vibrate more on target reached
-    if (state.currentCount + 1 == state.targetCount) {
+    final wasComplete = state.currentCount >= state.targetCount;
+    
+    ref.read(tasbihProvider.notifier).increment();
+    
+    // Celebratory feedback on completion
+    if (!wasComplete && ref.read(tasbihProvider).currentCount >= state.targetCount) {
       HapticFeedback.heavyImpact();
+      Future.delayed(const Duration(milliseconds: 100), () => HapticFeedback.mediumImpact());
     }
   }
 
@@ -50,7 +55,8 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => _DhikrPickerSheet(),
+      isScrollControlled: true,
+      builder: (context) => const _DhikrPickerSheet(),
     );
   }
 
@@ -63,8 +69,9 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
+        color: Colors.black.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.08),
@@ -73,120 +80,97 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
       ),
       child: Column(
         children: [
-          // Header with dhikr selector
+          // Dhikr selector - minimal
           GestureDetector(
             onTap: _showDhikrPicker,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.03),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF30A14E).withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.auto_awesome,
-                      color: Color(0xFF40C463),
-                      size: 16,
-                    ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  dhikr.transliteration.toLowerCase(),
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: 0.5,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          dhikr.transliteration,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          dhikr.meaning,
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.keyboard_arrow_down,
-                    color: Colors.grey[500],
-                    size: 20,
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.unfold_more,
+                  color: Colors.white.withValues(alpha: 0.3),
+                  size: 16,
+                ),
+              ],
             ),
           ),
-
-          // Main counter area
+          
+          const SizedBox(height: 24),
+          
+          // Arabic text
+          Text(
+            dhikr.arabic,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 26,
+              fontWeight: FontWeight.w400,
+              height: 1.4,
+            ),
+            textDirection: TextDirection.rtl,
+          ),
+          
+          const SizedBox(height: 32),
+          
+          // Main counter - tap area
           GestureDetector(
             onTap: _onTap,
+            behavior: HitTestBehavior.opaque,
             child: AnimatedBuilder(
               animation: _pulseAnimation,
-              builder: (context, child) {
-                return Transform.scale(
-                  scale: _pulseAnimation.value,
-                  child: child,
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 24),
+              builder: (context, child) => Transform.scale(
+                scale: _pulseAnimation.value,
+                child: child,
+              ),
+              child: SizedBox(
+                width: double.infinity,
                 child: Column(
                   children: [
-                    // Arabic text
-                    Text(
-                      dhikr.arabic,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w500,
-                        height: 1.5,
-                      ),
-                      textDirection: TextDirection.rtl,
-                    ),
-                    
-                    const SizedBox(height: 20),
-
-                    // Counter circle
+                    // Progress ring with count
                     Stack(
                       alignment: Alignment.center,
                       children: [
                         // Background ring
                         SizedBox(
-                          width: 100,
-                          height: 100,
+                          width: 140,
+                          height: 140,
                           child: CircularProgressIndicator(
                             value: 1,
-                            strokeWidth: 4,
-                            backgroundColor: const Color(0xFF21262D),
-                            valueColor: const AlwaysStoppedAnimation(Color(0xFF21262D)),
+                            strokeWidth: 3,
+                            backgroundColor: Colors.white.withValues(alpha: 0.06),
+                            valueColor: AlwaysStoppedAnimation(Colors.white.withValues(alpha: 0.06)),
                           ),
                         ),
-                        // Progress ring
+                        // Progress
                         SizedBox(
-                          width: 100,
-                          height: 100,
-                          child: CircularProgressIndicator(
-                            value: progress.clamp(0.0, 1.0),
-                            strokeWidth: 4,
-                            backgroundColor: Colors.transparent,
-                            valueColor: AlwaysStoppedAnimation(
-                              isComplete ? const Color(0xFF40C463) : const Color(0xFF30A14E),
+                          width: 140,
+                          height: 140,
+                          child: TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0, end: progress.clamp(0.0, 1.0)),
+                            duration: const Duration(milliseconds: 200),
+                            builder: (context, value, _) => CircularProgressIndicator(
+                              value: value,
+                              strokeWidth: 3,
+                              strokeCap: StrokeCap.round,
+                              backgroundColor: Colors.transparent,
+                              valueColor: AlwaysStoppedAnimation(
+                                isComplete 
+                                    ? const Color(0xFF40C463)
+                                    : const Color(0xFF40C463).withValues(alpha: 0.6),
+                              ),
                             ),
                           ),
                         ),
-                        // Count display
+                        // Count
                         Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -194,30 +178,36 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
                               '${state.currentCount}',
                               style: TextStyle(
                                 color: isComplete ? const Color(0xFF40C463) : Colors.white,
-                                fontSize: 32,
-                                fontWeight: FontWeight.w300,
+                                fontSize: 48,
+                                fontWeight: FontWeight.w200,
+                                height: 1,
                               ),
                             ),
+                            const SizedBox(height: 4),
                             Text(
-                              '/ ${state.targetCount}',
+                              '${state.targetCount}',
                               style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.25),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w300,
                               ),
                             ),
                           ],
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 16),
-
+                    
+                    const SizedBox(height: 20),
+                    
                     // Tap hint
                     Text(
-                      isComplete ? 'Target reached! ✓' : 'Tap to count',
+                      isComplete ? 'complete' : 'tap to count',
                       style: TextStyle(
-                        color: isComplete ? const Color(0xFF40C463) : Colors.grey[600],
-                        fontSize: 12,
+                        color: isComplete 
+                            ? const Color(0xFF40C463).withValues(alpha: 0.7)
+                            : Colors.white.withValues(alpha: 0.2),
+                        fontSize: 11,
+                        letterSpacing: 1,
                       ),
                     ),
                   ],
@@ -225,57 +215,33 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
               ),
             ),
           ),
-
-          // Footer stats
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.02),
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-            ),
-            child: Row(
-              children: [
-                _buildStat('Today', '${state.todayCount}', Icons.today),
-                Container(
-                  width: 1,
-                  height: 24,
-                  color: Colors.white.withValues(alpha: 0.1),
-                ),
-                _buildStat('Total', '${state.totalAllTime}', Icons.all_inclusive),
-                const Spacer(),
-                // Reset button
-                GestureDetector(
-                  onTap: () {
-                    HapticFeedback.selectionClick();
-                    ref.read(tasbihProvider.notifier).reset();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.refresh,
-                          color: Colors.grey[500],
-                          size: 14,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Reset',
-                          style: TextStyle(
-                            color: Colors.grey[500],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+          
+          const SizedBox(height: 28),
+          
+          // Stats row - minimal
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildStat('🔥 ${state.streakDays}', 'streak'),
+              Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.05)),
+              _buildStat('${state.todayCount}', 'today'),
+              Container(width: 1, height: 20, color: Colors.white.withValues(alpha: 0.05)),
+              _buildStat('${state.monthlyTotal}', 'month'),
+            ],
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Reset action - centered
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              ref.read(tasbihProvider.notifier).reset();
+            },
+            child: Icon(
+              Icons.refresh,
+              color: Colors.white.withValues(alpha: 0.2),
+              size: 20,
             ),
           ),
         ],
@@ -283,53 +249,63 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
     );
   }
 
-  Widget _buildStat(String label, String value, IconData icon) {
-    return Expanded(
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: Colors.grey[600], size: 14),
-          const SizedBox(width: 6),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 10,
-                ),
-              ),
-            ],
+  Widget _buildStat(String value, String label) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
-        ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.25),
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAction({required IconData icon, required bool isActive, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Icon(
+        icon,
+        color: isActive 
+            ? const Color(0xFF40C463).withValues(alpha: 0.7)
+            : Colors.white.withValues(alpha: 0.2),
+        size: 20,
       ),
     );
+  }
+
+  String _formatNum(int num) {
+    if (num >= 1000) return '${(num / 1000).toStringAsFixed(0)}k';
+    return num.toString();
   }
 }
 
-/// Dhikr picker bottom sheet - scrollable with safe area
+/// Minimal Dhikr picker
 class _DhikrPickerSheet extends ConsumerWidget {
+  const _DhikrPickerSheet();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(tasbihProvider);
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-
+    
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.7,
+        maxHeight: MediaQuery.of(context).size.height * 0.6,
       ),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1A1A),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -337,61 +313,37 @@ class _DhikrPickerSheet extends ConsumerWidget {
           // Handle
           Container(
             margin: const EdgeInsets.only(top: 12),
-            width: 40,
+            width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.3),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           
           // Title
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.auto_awesome,
-                  color: Color(0xFF40C463),
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Select Dhikr',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '${Dhikr.presets.length} options',
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
+            padding: const EdgeInsets.all(20),
+            child: Text(
+              'select dhikr',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 14,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
-
-          const Divider(height: 1, color: Color(0xFF333333)),
-
-          // Dhikr list - scrollable
-          Flexible(
+          
+          // List
+          Expanded(
             child: ListView.builder(
-              shrinkWrap: true,
-              padding: EdgeInsets.only(
-                top: 8,
-                bottom: bottomPadding + 20,
-              ),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
               itemCount: Dhikr.presets.length,
               itemBuilder: (context, index) {
                 final dhikr = Dhikr.presets[index];
                 final isSelected = index == state.selectedDhikrIndex;
-                final countForThis = ref.read(tasbihProvider.notifier).getCountForDhikr(index);
-
+                final count = ref.read(tasbihProvider.notifier).getCountForDhikr(index);
+                
                 return GestureDetector(
                   onTap: () {
                     HapticFeedback.selectionClick();
@@ -399,19 +351,16 @@ class _DhikrPickerSheet extends ConsumerWidget {
                     Navigator.pop(context);
                   },
                   child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    padding: const EdgeInsets.all(14),
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
                       color: isSelected 
-                          ? const Color(0xFF30A14E).withValues(alpha: 0.15)
-                          : Colors.white.withValues(alpha: 0.03),
+                          ? const Color(0xFF40C463).withValues(alpha: 0.08)
+                          : Colors.white.withValues(alpha: 0.02),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: isSelected 
-                            ? const Color(0xFF40C463).withValues(alpha: 0.5)
-                            : Colors.transparent,
-                        width: 1,
-                      ),
+                      border: isSelected
+                          ? Border.all(color: const Color(0xFF40C463).withValues(alpha: 0.2))
+                          : null,
                     ),
                     child: Row(
                       children: [
@@ -421,80 +370,40 @@ class _DhikrPickerSheet extends ConsumerWidget {
                             children: [
                               Text(
                                 dhikr.arabic,
-                                style: const TextStyle(
-                                  color: Colors.white,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.8),
                                   fontSize: 18,
                                 ),
                                 textDirection: TextDirection.rtl,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                dhikr.transliteration,
+                                dhikr.transliteration.toLowerCase(),
                                 style: TextStyle(
-                                  color: isSelected ? const Color(0xFF40C463) : Colors.grey[400],
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
+                                  color: isSelected 
+                                      ? const Color(0xFF40C463).withValues(alpha: 0.8)
+                                      : Colors.white.withValues(alpha: 0.4),
+                                  fontSize: 12,
                                 ),
-                              ),
-                              Text(
-                                dhikr.meaning,
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 11,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            // Show count if any
-                            if (countForThis > 0) ...[
-                              Text(
-                                '$countForThis',
-                                style: TextStyle(
-                                  color: isSelected ? const Color(0xFF40C463) : Colors.grey[400],
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              Text(
-                                '/ ${dhikr.defaultTarget}',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ] else ...[
-                              Text(
-                                '${dhikr.defaultTarget}',
-                                style: TextStyle(
-                                  color: Colors.grey[500],
-                                  fontSize: 14,
-                                ),
-                              ),
-                              Text(
-                                'target',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
+                        if (count > 0)
+                          Text(
+                            '$count',
+                            style: TextStyle(
+                              color: const Color(0xFF40C463).withValues(alpha: 0.6),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         if (isSelected) ...[
-                          const SizedBox(width: 10),
-                          const Icon(
-                            Icons.check_circle,
-                            color: Color(0xFF40C463),
-                            size: 20,
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.check,
+                            color: const Color(0xFF40C463).withValues(alpha: 0.7),
+                            size: 18,
                           ),
                         ],
                       ],
@@ -504,9 +413,10 @@ class _DhikrPickerSheet extends ConsumerWidget {
               },
             ),
           ),
+          
+          SafeArea(top: false, child: const SizedBox(height: 8)),
         ],
       ),
     );
   }
 }
-

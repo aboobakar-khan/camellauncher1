@@ -16,11 +16,14 @@ class SurahListScreen extends ConsumerStatefulWidget {
 
 class _SurahListScreenState extends ConsumerState<SurahListScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   List<Surah> _filteredSurahs = [];
+  bool _isSearching = false;
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -79,60 +82,86 @@ class _SurahListScreenState extends ConsumerState<SurahListScreen> {
               error: (_, __) => const SizedBox.shrink(),
             ),
           
-          // Search Bar
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: TextField(
-              controller: _searchController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Search Surah...',
-                hintStyle: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
-                ),
-                prefixIcon: Icon(
-                  Icons.search,
-                  color: Colors.white.withValues(alpha: 0.7),
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: Icon(
-                          Icons.clear,
-                          color: Colors.white.withValues(alpha: 0.7),
+          // Collapsible search - icon only when not searching
+          if (_isSearching)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _searchFocusNode,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'search...',
+                        hintStyle: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          fontSize: 13,
                         ),
-                        onPressed: () {
-                          setState(() {
-                            _searchController.clear();
-                          });
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: Colors.white.withValues(alpha: 0.1),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.3),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: Colors.white.withValues(alpha: 0.4),
+                          size: 16,
+                        ),
+                        prefixIconConstraints: const BoxConstraints(minWidth: 36),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.06),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (value) => setState(() {}),
+                    ),
                   ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.3),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _searchController.clear();
+                        _isSearching = false;
+                      });
+                    },
+                    child: Text(
+                      'cancel',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 12,
+                      ),
+                    ),
                   ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(
-                    color: Color.fromARGB(255, 147, 244, 150),
-                  ),
+                ],
+              ),
+            )
+          else
+            // Just a subtle search hint row
+            GestureDetector(
+              onTap: () => setState(() => _isSearching = true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.search,
+                      color: Colors.white.withValues(alpha: 0.25),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'search',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        fontSize: 12,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              onChanged: (value) {
-                setState(() {});
-              },
             ),
-          ),
 
           // Surah List
           Expanded(
@@ -249,19 +278,12 @@ class _SurahListScreenState extends ConsumerState<SurahListScreen> {
 
   Widget _buildResumeReadingCard(LastReadPosition position, List<Surah> surahs) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF40C463).withValues(alpha: 0.3),
-            const Color(0xFF30A14E).withValues(alpha: 0.2),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
+        color: const Color(0xFF40C463).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: const Color(0xFF40C463).withValues(alpha: 0.4),
+          color: const Color(0xFF40C463).withValues(alpha: 0.25),
           width: 1,
         ),
       ),
@@ -269,93 +291,51 @@ class _SurahListScreenState extends ConsumerState<SurahListScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _resumeReading(position, surahs),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(10),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: Row(
               children: [
-                // Book icon with progress
-                Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: CircularProgressIndicator(
-                        value: position.progressPercentage / 100,
-                        strokeWidth: 3,
-                        backgroundColor: Colors.white.withValues(alpha: 0.2),
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                          Color(0xFF40C463),
-                        ),
-                      ),
-                    ),
-                    const Icon(
-                      Icons.book_outlined,
-                      color: Color(0xFF40C463),
-                      size: 24,
-                    ),
-                  ],
+                // Play icon
+                const Icon(
+                  Icons.play_circle_filled,
+                  color: Color(0xFF40C463),
+                  size: 18,
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 10),
                 
-                // Text info
+                // Text - single line
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Row(
-                        children: [
-                          Icon(
-                            Icons.play_circle_filled,
-                            color: Color(0xFF40C463),
-                            size: 16,
+                  child: RichText(
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    text: TextSpan(
+                      style: const TextStyle(fontSize: 13),
+                      children: [
+                        TextSpan(
+                          text: position.surahTransliteration,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
                           ),
-                          SizedBox(width: 4),
-                          Text(
-                            'Resume Reading',
-                            style: TextStyle(
-                              color: Color(0xFF40C463),
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
+                        ),
+                        TextSpan(
+                          text: '  ·  ayah ${position.ayahNumber}/${position.totalVerses}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontWeight: FontWeight.w300,
                           ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        position.surahTransliteration,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Ayah ${position.ayahNumber} of ${position.totalVerses}',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.7),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 
                 // Arrow
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF40C463).withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.arrow_forward,
-                    color: Color(0xFF40C463),
-                    size: 20,
-                  ),
+                Icon(
+                  Icons.chevron_right,
+                  color: const Color(0xFF40C463).withValues(alpha: 0.7),
+                  size: 20,
                 ),
               ],
             ),

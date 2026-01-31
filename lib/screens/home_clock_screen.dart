@@ -16,6 +16,7 @@ import '../services/app_settings_service.dart';
 import '../widgets/app_interrupt_dialog.dart';
 import '../widgets/clock_variants.dart';
 import '../widgets/quick_search_overlay.dart';
+import '../widgets/offline_download_indicator.dart';
 import 'app_list_screen.dart';
 
 /// Home Clock Screen - Minimalist clock and date display
@@ -198,7 +199,12 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen> {
                 Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 50),
+                  const SizedBox(height: 20),
+                  
+                  // Subtle offline download indicator
+                  const OfflineDownloadIndicator(),
+                  
+                  const SizedBox(height: 30),
 
                   // Clock widget based on selected style at top center
                   Center(

@@ -89,7 +89,7 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             //      0            1          2      3
             PageView(
               controller: _pageController,
-              physics: const BouncingScrollPhysics(),
+              physics: const ClampingScrollPhysics(), // No bounce at edges
               children: const [
                 // Swipe LEFT from home
                 IslamicHubScreen(),       // Index 0 - Combined Quran + Hadith
@@ -233,76 +233,88 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen>
       body: SafeArea(
         child: Column(
           children: [
-            // Header
+            // Header with prominent tabs
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
               child: Row(
                 children: [
-                  Text(
-                    '☪',
-                    style: TextStyle(
-                      fontSize: 28,
-                      color: themeColor.color,
+                  // Quran tab
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _tabController.animateTo(0),
+                      child: AnimatedBuilder(
+                        animation: _tabController,
+                        builder: (context, _) {
+                          final isSelected = _tabController.index == 0;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: isSelected 
+                                  ? themeColor.color.withValues(alpha: 0.12)
+                                  : Colors.white.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected 
+                                    ? themeColor.color.withValues(alpha: 0.3)
+                                    : Colors.white.withValues(alpha: 0.08),
+                              ),
+                            ),
+                            child: Text(
+                              'Quran',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: isSelected 
+                                    ? Colors.white 
+                                    : Colors.white.withValues(alpha: 0.5),
+                                fontSize: 16,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
+                  
                   const SizedBox(width: 12),
-                  const Text(
-                    'Islamic',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Tab bar
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                indicator: BoxDecoration(
-                  color: themeColor.color.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: themeColor.color.withValues(alpha: 0.5),
-                    width: 1,
-                  ),
-                ),
-                indicatorSize: TabBarIndicatorSize.tab,
-                indicatorPadding: const EdgeInsets.all(4),
-                dividerColor: Colors.transparent,
-                labelColor: themeColor.color,
-                unselectedLabelColor: Colors.white60,
-                labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-                tabs: const [
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.menu_book_outlined, size: 18),
-                        SizedBox(width: 8),
-                        Text('Quran'),
-                      ],
-                    ),
-                  ),
-                  Tab(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.format_quote_outlined, size: 18),
-                        SizedBox(width: 8),
-                        Text('Hadith & Dua'),
-                      ],
+                  
+                  // Hadith tab
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _tabController.animateTo(1),
+                      child: AnimatedBuilder(
+                        animation: _tabController,
+                        builder: (context, _) {
+                          final isSelected = _tabController.index == 1;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: isSelected 
+                                  ? themeColor.color.withValues(alpha: 0.12)
+                                  : Colors.white.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isSelected 
+                                    ? themeColor.color.withValues(alpha: 0.3)
+                                    : Colors.white.withValues(alpha: 0.08),
+                              ),
+                            ),
+                            child: Text(
+                              'Hadith',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: isSelected 
+                                    ? Colors.white 
+                                    : Colors.white.withValues(alpha: 0.5),
+                                fontSize: 16,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ],

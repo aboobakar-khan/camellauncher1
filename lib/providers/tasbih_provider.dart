@@ -2,42 +2,103 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-/// Tasbih state model - stores count per dhikr
+/// Achievement badge types
+enum DhikrAchievement {
+  firstCount('First Count', '🌟', 'Complete your first dhikr', 1),
+  counter100('Century', '💯', 'Reach 100 total count', 100),
+  counter1K('1K Counter', '🏆', 'Reach 1,000 total count', 1000),
+  counter10K('10K Master', '👑', 'Reach 10,000 total count', 10000),
+  streak3('3-Day Streak', '🔥', 'Count dhikr 3 days in a row', 3),
+  streak7('Week Warrior', '⚡', 'Count dhikr 7 days in a row', 7),
+  streak30('Month Master', '🌙', 'Count dhikr 30 days in a row', 30),
+  dailyGoal('Daily Goal', '✅', 'Complete a full target', 1);
+  
+  final String name;
+  final String emoji;
+  final String description;
+  final int requirement;
+  
+  const DhikrAchievement(this.name, this.emoji, this.description, this.requirement);
+}
+
+/// Tasbih state model - stores count per dhikr with enhanced stats
 class TasbihState {
   final Map<int, int> dhikrCounts; // Count per dhikr index
   final int targetCount;
   final int totalAllTime;
   final int todayCount;
+  final int monthlyTotal;
   final String lastDate;
   final int selectedDhikrIndex;
+  final int streakDays;
+  final String lastStreakDate;
+  final List<String> unlockedAchievements;
+  final bool soundEnabled;
+  final int completedTargets; // How many times target was reached
 
   TasbihState({
     Map<int, int>? dhikrCounts,
     this.targetCount = 33,
     this.totalAllTime = 0,
     this.todayCount = 0,
+    this.monthlyTotal = 0,
     this.lastDate = '',
     this.selectedDhikrIndex = 0,
-  }) : dhikrCounts = dhikrCounts ?? {};
+    this.streakDays = 0,
+    this.lastStreakDate = '',
+    List<String>? unlockedAchievements,
+    this.soundEnabled = false,
+    this.completedTargets = 0,
+  }) : dhikrCounts = dhikrCounts ?? {},
+       unlockedAchievements = unlockedAchievements ?? [];
 
   // Get current count for selected dhikr
   int get currentCount => dhikrCounts[selectedDhikrIndex] ?? 0;
+  
+  // Get next milestone
+  int get nextMilestone {
+    final milestones = [100, 500, 1000, 5000, 10000, 50000, 100000];
+    for (final m in milestones) {
+      if (totalAllTime < m) return m;
+    }
+    return totalAllTime + 10000;
+  }
+  
+  // Progress to next milestone
+  double get milestoneProgress {
+    final prev = [0, 100, 500, 1000, 5000, 10000, 50000].lastWhere((m) => m <= totalAllTime, orElse: () => 0);
+    final next = nextMilestone;
+    if (next == prev) return 1.0;
+    return (totalAllTime - prev) / (next - prev);
+  }
 
   TasbihState copyWith({
     Map<int, int>? dhikrCounts,
     int? targetCount,
     int? totalAllTime,
     int? todayCount,
+    int? monthlyTotal,
     String? lastDate,
     int? selectedDhikrIndex,
+    int? streakDays,
+    String? lastStreakDate,
+    List<String>? unlockedAchievements,
+    bool? soundEnabled,
+    int? completedTargets,
   }) {
     return TasbihState(
       dhikrCounts: dhikrCounts ?? this.dhikrCounts,
       targetCount: targetCount ?? this.targetCount,
       totalAllTime: totalAllTime ?? this.totalAllTime,
       todayCount: todayCount ?? this.todayCount,
+      monthlyTotal: monthlyTotal ?? this.monthlyTotal,
       lastDate: lastDate ?? this.lastDate,
       selectedDhikrIndex: selectedDhikrIndex ?? this.selectedDhikrIndex,
+      streakDays: streakDays ?? this.streakDays,
+      lastStreakDate: lastStreakDate ?? this.lastStreakDate,
+      unlockedAchievements: unlockedAchievements ?? this.unlockedAchievements,
+      soundEnabled: soundEnabled ?? this.soundEnabled,
+      completedTargets: completedTargets ?? this.completedTargets,
     );
   }
 
@@ -46,8 +107,14 @@ class TasbihState {
     'targetCount': targetCount,
     'totalAllTime': totalAllTime,
     'todayCount': todayCount,
+    'monthlyTotal': monthlyTotal,
     'lastDate': lastDate,
     'selectedDhikrIndex': selectedDhikrIndex,
+    'streakDays': streakDays,
+    'lastStreakDate': lastStreakDate,
+    'unlockedAchievements': unlockedAchievements,
+    'soundEnabled': soundEnabled,
+    'completedTargets': completedTargets,
   };
 
   factory TasbihState.fromJson(Map<String, dynamic> json) {
@@ -69,8 +136,14 @@ class TasbihState {
       targetCount: json['targetCount'] as int? ?? 33,
       totalAllTime: json['totalAllTime'] as int? ?? 0,
       todayCount: json['todayCount'] as int? ?? 0,
+      monthlyTotal: json['monthlyTotal'] as int? ?? 0,
       lastDate: json['lastDate'] as String? ?? '',
       selectedDhikrIndex: json['selectedDhikrIndex'] as int? ?? 0,
+      streakDays: json['streakDays'] as int? ?? 0,
+      lastStreakDate: json['lastStreakDate'] as String? ?? '',
+      unlockedAchievements: (json['unlockedAchievements'] as List<dynamic>?)?.cast<String>() ?? [],
+      soundEnabled: json['soundEnabled'] as bool? ?? false,
+      completedTargets: json['completedTargets'] as int? ?? 0,
     );
   }
 }
@@ -227,11 +300,29 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
 
   void _checkNewDay() {
     final today = DateTime.now().toIso8601String().split('T')[0];
+    final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().split('T')[0];
+    
     if (state.lastDate != today) {
-      // New day - reset today count but keep dhikr counts
+      // Check streak
+      int newStreak = state.streakDays;
+      if (state.lastDate == yesterday && state.todayCount > 0) {
+        // Consecutive day - streak continues
+        newStreak = state.streakDays + 1;
+      } else if (state.lastDate != yesterday && state.lastDate.isNotEmpty) {
+        // Streak broken
+        newStreak = 0;
+      }
+      
+      // Check if new month
+      final lastMonth = state.lastDate.isNotEmpty ? state.lastDate.substring(0, 7) : '';
+      final thisMonth = today.substring(0, 7);
+      final monthlyTotal = lastMonth != thisMonth ? 0 : state.monthlyTotal;
+      
       state = state.copyWith(
         todayCount: 0,
         lastDate: today,
+        streakDays: newStreak,
+        monthlyTotal: monthlyTotal,
       );
       _save();
     }
@@ -245,15 +336,89 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
   void increment() {
     // Update count for current dhikr
     final newCounts = Map<int, int>.from(state.dhikrCounts);
-    newCounts[state.selectedDhikrIndex] = (newCounts[state.selectedDhikrIndex] ?? 0) + 1;
+    final newCount = (newCounts[state.selectedDhikrIndex] ?? 0) + 1;
+    newCounts[state.selectedDhikrIndex] = newCount;
+    
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    int newStreak = state.streakDays;
+    
+    // Check if this is first count today (start/continue streak)
+    if (state.todayCount == 0) {
+      final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().split('T')[0];
+      if (state.lastStreakDate == yesterday) {
+        newStreak = state.streakDays + 1;
+      } else if (state.lastStreakDate != today) {
+        newStreak = 1;
+      }
+    }
+    
+    // Check for target completion
+    int completedTargets = state.completedTargets;
+    if (newCount == state.targetCount) {
+      completedTargets++;
+    }
     
     state = state.copyWith(
       dhikrCounts: newCounts,
       totalAllTime: state.totalAllTime + 1,
       todayCount: state.todayCount + 1,
-      lastDate: DateTime.now().toIso8601String().split('T')[0],
+      monthlyTotal: state.monthlyTotal + 1,
+      lastDate: today,
+      streakDays: newStreak,
+      lastStreakDate: today,
+      completedTargets: completedTargets,
     );
+    
+    // Check and unlock achievements
+    _checkAchievements();
     _save();
+  }
+  
+  void _checkAchievements() {
+    final unlocked = List<String>.from(state.unlockedAchievements);
+    bool changed = false;
+    
+    // Check count-based achievements
+    if (state.totalAllTime >= 1 && !unlocked.contains('firstCount')) {
+      unlocked.add('firstCount');
+      changed = true;
+    }
+    if (state.totalAllTime >= 100 && !unlocked.contains('counter100')) {
+      unlocked.add('counter100');
+      changed = true;
+    }
+    if (state.totalAllTime >= 1000 && !unlocked.contains('counter1K')) {
+      unlocked.add('counter1K');
+      changed = true;
+    }
+    if (state.totalAllTime >= 10000 && !unlocked.contains('counter10K')) {
+      unlocked.add('counter10K');
+      changed = true;
+    }
+    
+    // Check streak achievements
+    if (state.streakDays >= 3 && !unlocked.contains('streak3')) {
+      unlocked.add('streak3');
+      changed = true;
+    }
+    if (state.streakDays >= 7 && !unlocked.contains('streak7')) {
+      unlocked.add('streak7');
+      changed = true;
+    }
+    if (state.streakDays >= 30 && !unlocked.contains('streak30')) {
+      unlocked.add('streak30');
+      changed = true;
+    }
+    
+    // Check daily goal
+    if (state.completedTargets >= 1 && !unlocked.contains('dailyGoal')) {
+      unlocked.add('dailyGoal');
+      changed = true;
+    }
+    
+    if (changed) {
+      state = state.copyWith(unlockedAchievements: unlocked);
+    }
   }
 
   void reset() {
@@ -266,6 +431,11 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
 
   void setTarget(int target) {
     state = state.copyWith(targetCount: target);
+    _save();
+  }
+  
+  void toggleSound() {
+    state = state.copyWith(soundEnabled: !state.soundEnabled);
     _save();
   }
 
@@ -285,7 +455,11 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
     state = state.copyWith(
       totalAllTime: 0, 
       todayCount: 0,
+      monthlyTotal: 0,
       dhikrCounts: {},
+      streakDays: 0,
+      completedTargets: 0,
+      unlockedAchievements: [],
     );
     _save();
   }
