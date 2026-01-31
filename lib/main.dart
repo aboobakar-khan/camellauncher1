@@ -6,6 +6,7 @@ import 'models/todo_item.dart';
 import 'models/note.dart';
 import 'models/app_interrupt.dart';
 import 'models/focus_mode.dart';
+import 'models/deen_mode.dart';
 import 'models/favorite_app.dart';
 import 'models/installed_app.dart';
 import 'models/hidden_app.dart';
@@ -26,6 +27,7 @@ void main() async {
   Hive.registerAdapter(AppInterruptAdapter());
   Hive.registerAdapter(InterruptMethodAdapter());
   Hive.registerAdapter(FocusModeSettingsAdapter());
+  Hive.registerAdapter(DeenModeSettingsAdapter()); // Deen Mode
   Hive.registerAdapter(FavoriteAppAdapter());
   Hive.registerAdapter(InstalledAppAdapter());
   Hive.registerAdapter(HiddenAppAdapter()); // User hidden/unhidden apps
