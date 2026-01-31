@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-/// Tasbih state model
+/// Tasbih state model - stores count per dhikr
 class TasbihState {
-  final int currentCount;
+  final Map<int, int> dhikrCounts; // Count per dhikr index
   final int targetCount;
   final int totalAllTime;
   final int todayCount;
@@ -12,16 +12,19 @@ class TasbihState {
   final int selectedDhikrIndex;
 
   TasbihState({
-    this.currentCount = 0,
+    Map<int, int>? dhikrCounts,
     this.targetCount = 33,
     this.totalAllTime = 0,
     this.todayCount = 0,
     this.lastDate = '',
     this.selectedDhikrIndex = 0,
-  });
+  }) : dhikrCounts = dhikrCounts ?? {};
+
+  // Get current count for selected dhikr
+  int get currentCount => dhikrCounts[selectedDhikrIndex] ?? 0;
 
   TasbihState copyWith({
-    int? currentCount,
+    Map<int, int>? dhikrCounts,
     int? targetCount,
     int? totalAllTime,
     int? todayCount,
@@ -29,7 +32,7 @@ class TasbihState {
     int? selectedDhikrIndex,
   }) {
     return TasbihState(
-      currentCount: currentCount ?? this.currentCount,
+      dhikrCounts: dhikrCounts ?? this.dhikrCounts,
       targetCount: targetCount ?? this.targetCount,
       totalAllTime: totalAllTime ?? this.totalAllTime,
       todayCount: todayCount ?? this.todayCount,
@@ -39,7 +42,7 @@ class TasbihState {
   }
 
   Map<String, dynamic> toJson() => {
-    'currentCount': currentCount,
+    'dhikrCounts': dhikrCounts.map((k, v) => MapEntry(k.toString(), v)),
     'targetCount': targetCount,
     'totalAllTime': totalAllTime,
     'todayCount': todayCount,
@@ -48,8 +51,21 @@ class TasbihState {
   };
 
   factory TasbihState.fromJson(Map<String, dynamic> json) {
+    // Parse dhikrCounts
+    Map<int, int> counts = {};
+    if (json['dhikrCounts'] != null) {
+      final rawCounts = json['dhikrCounts'] as Map<String, dynamic>;
+      counts = rawCounts.map((k, v) => MapEntry(int.parse(k), v as int));
+    }
+    // Migration: if old format with currentCount, migrate it
+    if (json['currentCount'] != null && counts.isEmpty) {
+      final oldCount = json['currentCount'] as int? ?? 0;
+      final oldIndex = json['selectedDhikrIndex'] as int? ?? 0;
+      counts[oldIndex] = oldCount;
+    }
+    
     return TasbihState(
-      currentCount: json['currentCount'] as int? ?? 0,
+      dhikrCounts: counts,
       targetCount: json['targetCount'] as int? ?? 33,
       totalAllTime: json['totalAllTime'] as int? ?? 0,
       todayCount: json['todayCount'] as int? ?? 0,
@@ -59,7 +75,7 @@ class TasbihState {
   }
 }
 
-/// Dhikr preset
+/// Dhikr preset with more options
 class Dhikr {
   final String arabic;
   final String transliteration;
@@ -74,6 +90,7 @@ class Dhikr {
   });
 
   static const List<Dhikr> presets = [
+    // Core Tasbihat (After Salah)
     Dhikr(
       arabic: 'سُبْحَانَ اللَّهِ',
       transliteration: 'SubhanAllah',
@@ -92,12 +109,14 @@ class Dhikr {
       meaning: 'Allah is the Greatest',
       defaultTarget: 34,
     ),
+    // Kalimah
     Dhikr(
       arabic: 'لَا إِلَٰهَ إِلَّا اللَّهُ',
       transliteration: 'La ilaha illallah',
       meaning: 'There is no god but Allah',
       defaultTarget: 100,
     ),
+    // Istighfar
     Dhikr(
       arabic: 'أَسْتَغْفِرُ اللَّهَ',
       transliteration: 'Astaghfirullah',
@@ -105,9 +124,71 @@ class Dhikr {
       defaultTarget: 100,
     ),
     Dhikr(
+      arabic: 'أَسْتَغْفِرُ اللَّهَ الْعَظِيمَ',
+      transliteration: 'Astaghfirullah al-Azeem',
+      meaning: 'I seek forgiveness from Allah, the Mighty',
+      defaultTarget: 100,
+    ),
+    // SubhanAllah variations
+    Dhikr(
       arabic: 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ',
       transliteration: 'SubhanAllahi wa bihamdihi',
       meaning: 'Glory and praise be to Allah',
+      defaultTarget: 100,
+    ),
+    Dhikr(
+      arabic: 'سُبْحَانَ اللَّهِ الْعَظِيمِ',
+      transliteration: 'SubhanAllah al-Azeem',
+      meaning: 'Glory be to Allah, the Mighty',
+      defaultTarget: 100,
+    ),
+    // Salawat
+    Dhikr(
+      arabic: 'اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ',
+      transliteration: 'Allahumma salli ala Muhammad',
+      meaning: 'O Allah, send blessings upon Muhammad',
+      defaultTarget: 100,
+    ),
+    // Power of Allah
+    Dhikr(
+      arabic: 'لَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ',
+      transliteration: 'La hawla wa la quwwata illa billah',
+      meaning: 'There is no power except with Allah',
+      defaultTarget: 100,
+    ),
+    // Combined Tasbeeh
+    Dhikr(
+      arabic: 'سُبْحَانَ اللَّهِ وَالْحَمْدُ لِلَّهِ وَلَا إِلَٰهَ إِلَّا اللَّهُ وَاللَّهُ أَكْبَرُ',
+      transliteration: 'SubhanAllah wal Hamdulillah...',
+      meaning: 'Glory to Allah, Praise to Allah, No god but Allah, Allah is Great',
+      defaultTarget: 100,
+    ),
+    // Ya Allah
+    Dhikr(
+      arabic: 'يَا اللَّهُ',
+      transliteration: 'Ya Allah',
+      meaning: 'O Allah',
+      defaultTarget: 100,
+    ),
+    // Ya Rahman
+    Dhikr(
+      arabic: 'يَا رَحْمَٰنُ',
+      transliteration: 'Ya Rahman',
+      meaning: 'O Most Merciful',
+      defaultTarget: 100,
+    ),
+    // Ya Raheem
+    Dhikr(
+      arabic: 'يَا رَحِيمُ',
+      transliteration: 'Ya Raheem',
+      meaning: 'O Most Compassionate',
+      defaultTarget: 100,
+    ),
+    // Custom counter
+    Dhikr(
+      arabic: '...',
+      transliteration: 'Custom Count',
+      meaning: 'Use for any dhikr',
       defaultTarget: 100,
     ),
   ];
@@ -135,6 +216,9 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
         final json = jsonDecode(saved) as Map<String, dynamic>;
         state = TasbihState.fromJson(json);
         _checkNewDay();
+        // Set target to current dhikr's default
+        final dhikr = Dhikr.presets[state.selectedDhikrIndex];
+        state = state.copyWith(targetCount: dhikr.defaultTarget);
       } catch (e) {
         // Use default
       }
@@ -144,9 +228,9 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
   void _checkNewDay() {
     final today = DateTime.now().toIso8601String().split('T')[0];
     if (state.lastDate != today) {
+      // New day - reset today count but keep dhikr counts
       state = state.copyWith(
         todayCount: 0,
-        currentCount: 0,
         lastDate: today,
       );
       _save();
@@ -159,9 +243,12 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
   }
 
   void increment() {
-    final newCurrent = state.currentCount + 1;
+    // Update count for current dhikr
+    final newCounts = Map<int, int>.from(state.dhikrCounts);
+    newCounts[state.selectedDhikrIndex] = (newCounts[state.selectedDhikrIndex] ?? 0) + 1;
+    
     state = state.copyWith(
-      currentCount: newCurrent,
+      dhikrCounts: newCounts,
       totalAllTime: state.totalAllTime + 1,
       todayCount: state.todayCount + 1,
       lastDate: DateTime.now().toIso8601String().split('T')[0],
@@ -170,7 +257,10 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
   }
 
   void reset() {
-    state = state.copyWith(currentCount: 0);
+    // Reset only current dhikr's count
+    final newCounts = Map<int, int>.from(state.dhikrCounts);
+    newCounts[state.selectedDhikrIndex] = 0;
+    state = state.copyWith(dhikrCounts: newCounts);
     _save();
   }
 
@@ -180,17 +270,28 @@ class TasbihNotifier extends StateNotifier<TasbihState> {
   }
 
   void selectDhikr(int index) {
+    if (index < 0 || index >= Dhikr.presets.length) return;
+    
     final dhikr = Dhikr.presets[index];
+    // Don't reset count - just switch dhikr and update target
     state = state.copyWith(
       selectedDhikrIndex: index,
       targetCount: dhikr.defaultTarget,
-      currentCount: 0,
     );
     _save();
   }
 
   void resetAllTime() {
-    state = state.copyWith(totalAllTime: 0, todayCount: 0);
+    state = state.copyWith(
+      totalAllTime: 0, 
+      todayCount: 0,
+      dhikrCounts: {},
+    );
     _save();
+  }
+  
+  // Get count for a specific dhikr
+  int getCountForDhikr(int index) {
+    return state.dhikrCounts[index] ?? 0;
   }
 }
