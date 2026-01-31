@@ -6,7 +6,9 @@ import '../models/surah.dart';
 import 'surah_reader_screen.dart';
 
 class SurahListScreen extends ConsumerStatefulWidget {
-  const SurahListScreen({super.key});
+  final bool isEmbedded;
+  
+  const SurahListScreen({super.key, this.isEmbedded = false});
 
   @override
   ConsumerState<SurahListScreen> createState() => _SurahListScreenState();

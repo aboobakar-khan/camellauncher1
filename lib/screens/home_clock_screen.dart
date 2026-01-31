@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:installed_apps/installed_apps.dart';
 import '../providers/theme_provider.dart';
@@ -14,6 +15,8 @@ import '../providers/quick_action_provider.dart';
 import '../services/app_settings_service.dart';
 import '../widgets/app_interrupt_dialog.dart';
 import '../widgets/clock_variants.dart';
+import '../widgets/quick_search_overlay.dart';
+import 'app_list_screen.dart';
 
 /// Home Clock Screen - Minimalist clock and date display
 class HomeClockScreen extends ConsumerStatefulWidget {
@@ -27,6 +30,10 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen> {
   late Timer _timer;
   DateTime _currentTime = DateTime.now();
   // No cache needed - favorites stored permanently in Hive with app names
+  
+  // Vertical gesture tracking
+  double _verticalDragStart = 0;
+  static const double _swipeThreshold = 100;
 
   @override
   void initState() {
@@ -44,6 +51,37 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen> {
   void dispose() {
     _timer.cancel();
     super.dispose();
+  }
+
+  // Swipe UP → Open App List
+  void _onSwipeUp() {
+    HapticFeedback.mediumImpact();
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => 
+            const AppListScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0, 1),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            )),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
+  }
+
+  // Swipe DOWN → Open Quick Search
+  void _onSwipeDown() {
+    HapticFeedback.lightImpact();
+    showQuickSearchOverlay(context);
   }
 
   Future<void> _launchApp(String packageName) async {
@@ -126,18 +164,38 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen> {
     final clockOpacity = ref.watch(clockOpacityProvider);
     final favorites = ref.watch(favoriteAppsProvider);
 
-    return SafeArea(
-      child: SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minHeight:
-                MediaQuery.of(context).size.height -
-                MediaQuery.of(context).padding.top,
-          ),
-          child: Stack(
-            children: [
-              // Main content
-              Column(
+    return GestureDetector(
+      // Vertical swipe gestures (Samsung-style)
+      onVerticalDragStart: (details) {
+        _verticalDragStart = details.globalPosition.dy;
+      },
+      onVerticalDragEnd: (details) {
+        final delta = details.globalPosition.dy - _verticalDragStart;
+        final velocity = details.primaryVelocity ?? 0;
+        
+        // Swipe UP (negative delta, high velocity)
+        if (delta < -_swipeThreshold || velocity < -500) {
+          _onSwipeUp();
+        }
+        // Swipe DOWN (positive delta, high velocity)
+        else if (delta > _swipeThreshold || velocity > 500) {
+          _onSwipeDown();
+        }
+      },
+      behavior: HitTestBehavior.opaque,
+      child: SafeArea(
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(), // Disable scroll, we handle gestures
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight:
+                  MediaQuery.of(context).size.height -
+                  MediaQuery.of(context).padding.top,
+            ),
+            child: Stack(
+              children: [
+                // Main content
+                Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   const SizedBox(height: 50),
@@ -158,14 +216,15 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen> {
                 ],
               ),
 
-              // Favorite apps at the bottom
-              if (favorites.isNotEmpty)
-                Positioned(
-                  left: 20,
-                  right: 20,
-                  bottom: 59 + MediaQuery.of(context).padding.bottom,
-                  child: _buildFavoriteApps(themeColor),
-                ),
+              // Favorite apps at the bottom (or empty state for first-time users)
+              Positioned(
+                left: 20,
+                right: 20,
+                bottom: 59 + MediaQuery.of(context).padding.bottom,
+                child: favorites.isNotEmpty
+                    ? _buildFavoriteApps(themeColor)
+                    : _buildEmptyFavoritesHint(themeColor),
+              ),
 
               // Quick action buttons at the corners bottom
               // Phone button - left corner
@@ -210,6 +269,7 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -330,6 +390,152 @@ class _HomeClockScreenState extends ConsumerState<HomeClockScreen> {
               )),
         ],
       ),
+    );
+  }
+
+  Widget _buildEmptyFavoritesHint(AppThemeColor themeColor) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        // Navigate to app list screen - swipe right
+        // We'll use a PageController command through a callback
+        // For now, show a helpful dialog
+        _showAddFavoritesDialog(themeColor);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Animated hint icon
+          Row(
+            children: [
+              Icon(
+                Icons.add_circle_outline,
+                color: themeColor.color.withValues(alpha: 0.4),
+                size: 16,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'QUICK ACCESS',
+                style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w400,
+                  color: themeColor.color.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Main hint text
+          Text(
+            'Add your favorite apps',
+            style: TextStyle(
+              fontSize: 16,
+              letterSpacing: 0.5,
+              fontWeight: FontWeight.w300,
+              color: themeColor.color.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Tap here or swipe right → App List',
+            style: TextStyle(
+              fontSize: 12,
+              letterSpacing: 0.5,
+              fontWeight: FontWeight.w300,
+              color: themeColor.color.withValues(alpha: 0.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddFavoritesDialog(AppThemeColor themeColor) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.star_outline, color: themeColor.color, size: 24),
+            const SizedBox(width: 12),
+            const Text(
+              'Add Favorites',
+              style: TextStyle(color: Colors.white, fontSize: 18),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'To add favorite apps for quick access:',
+              style: TextStyle(
+                color: Colors.grey[400],
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildStep('1', 'Swipe right to open App List', themeColor),
+            const SizedBox(height: 10),
+            _buildStep('2', 'Long-press any app', themeColor),
+            const SizedBox(height: 10),
+            _buildStep('3', 'Tap "Add to Favorites"', themeColor),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Got it',
+              style: TextStyle(
+                color: themeColor.color,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStep(String number, String text, AppThemeColor themeColor) {
+    return Row(
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: themeColor.color.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            number,
+            style: TextStyle(
+              color: themeColor.color,
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: Colors.grey[300],
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

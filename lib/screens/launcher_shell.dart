@@ -47,31 +47,63 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
   Widget build(BuildContext context) {
     final wallpaper = ref.watch(wallpaperProvider);
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Background
-          _buildBackground(wallpaper),
+    // Block system back gesture for launcher
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        body: Stack(
+          children: [
+            // Background
+            _buildBackground(wallpaper),
 
-          // Main content - 4 swipeable pages
-          // [Islamic Hub] [Dashboard] [HOME] [Apps]
-          //      0            1          2      3
-          PageView(
-            controller: _pageController,
-            physics: const BouncingScrollPhysics(),
-            children: const [
-              // Swipe LEFT from home
-              IslamicHubScreen(),       // Index 0 - Combined Quran + Hadith
-              WidgetDashboardScreen(),  // Index 1
-              
-              // HOME (middle - starts here)
-              HomeClockScreen(),        // Index 2
-              
-              // Swipe RIGHT from home
-              AppListScreen(),          // Index 3
-            ],
-          ),
-        ],
+            // Edge gesture blockers - consume swipes at screen edges
+            // Left edge blocker
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 20,
+              child: GestureDetector(
+                onHorizontalDragStart: (_) {},
+                onHorizontalDragUpdate: (_) {},
+                onHorizontalDragEnd: (_) {},
+                behavior: HitTestBehavior.translucent,
+              ),
+            ),
+            // Right edge blocker
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 20,
+              child: GestureDetector(
+                onHorizontalDragStart: (_) {},
+                onHorizontalDragUpdate: (_) {},
+                onHorizontalDragEnd: (_) {},
+                behavior: HitTestBehavior.translucent,
+              ),
+            ),
+
+            // Main content - 4 swipeable pages
+            // [Islamic Hub] [Dashboard] [HOME] [Apps]
+            //      0            1          2      3
+            PageView(
+              controller: _pageController,
+              physics: const BouncingScrollPhysics(),
+              children: const [
+                // Swipe LEFT from home
+                IslamicHubScreen(),       // Index 0 - Combined Quran + Hadith
+                WidgetDashboardScreen(),  // Index 1
+                
+                // HOME (middle - starts here)
+                HomeClockScreen(),        // Index 2
+                
+                // Swipe RIGHT from home
+                AppListScreen(),          // Index 3
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

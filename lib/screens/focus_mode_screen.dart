@@ -1,4 +1,4 @@
-import 'dart:ui' as ui;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,16 +7,14 @@ import 'package:installed_apps/app_info.dart';
 import '../providers/focus_mode_provider.dart';
 import '../providers/hidden_apps_provider.dart';
 import '../providers/tasbih_provider.dart';
-import '../providers/theme_provider.dart';
 import '../models/focus_mode.dart';
 import '../utils/app_filter_utils.dart';
-import '../features/quran/providers/quran_provider.dart';
 import '../features/quran/screens/surah_list_screen.dart';
-import '../features/hadith_dua/providers/hadith_dua_provider.dart';
-import 'dart:async';
 import 'package:intl/intl.dart';
 
-/// Focus Mode Screen - Enhanced with Islamic features and exit friction
+/// Focus Mode Screen - Minimalist design
+/// 
+/// Blocks swipe navigation and provides distraction-free environment
 class FocusModeScreen extends ConsumerStatefulWidget {
   const FocusModeScreen({super.key});
 
@@ -29,11 +27,7 @@ class _FocusModeScreenState extends ConsumerState<FocusModeScreen> {
   bool _isLoading = true;
   late Timer _timer;
   String _currentTime = '';
-
-  // Cache for faster loading
-  static Map<String, AppInfo>? _appsCache;
-  static DateTime? _lastCacheUpdate;
-  static const _cacheValidityDuration = Duration(minutes: 30);
+  int _quickTasbihCount = 0;
 
   @override
   void initState() {
@@ -50,50 +44,31 @@ class _FocusModeScreenState extends ConsumerState<FocusModeScreen> {
   }
 
   void _updateTime() {
-    setState(() {
-      _currentTime = DateFormat('HH:mm').format(DateTime.now());
-    });
+    if (mounted) {
+      setState(() {
+        _currentTime = DateFormat('HH:mm').format(DateTime.now());
+      });
+    }
   }
 
   Future<void> _loadAllowedApps() async {
     try {
       final focusMode = ref.read(focusModeProvider);
-      final now = DateTime.now();
-      final cacheExpired =
-          _lastCacheUpdate == null ||
-          now.difference(_lastCacheUpdate!) > _cacheValidityDuration;
-
-      if (_appsCache != null && !cacheExpired) {
-        final cached = focusMode.allowedApps
-            .where((pkg) => _appsCache!.containsKey(pkg))
-            .map((pkg) => _appsCache![pkg]!)
-            .toList();
-
-        if (cached.length == focusMode.allowedApps.length) {
-          setState(() {
-            _allowedApps = cached;
-            _isLoading = false;
-          });
-          return;
-        }
-      }
-
       final hiddenApps = ref.read(hiddenAppsProvider);
       final allApps = await AppFilterUtils.getFilteredAppsAlternative(
         hiddenApps: hiddenApps,
       );
 
-      _appsCache = {for (var app in allApps) app.packageName: app};
-      _lastCacheUpdate = now;
-
-      setState(() {
-        _allowedApps = allApps
-            .where((app) => focusMode.allowedApps.contains(app.packageName))
-            .toList();
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _allowedApps = allApps
+              .where((app) => focusMode.allowedApps.contains(app.packageName))
+              .toList();
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -101,558 +76,271 @@ class _FocusModeScreenState extends ConsumerState<FocusModeScreen> {
     try {
       await InstalledApps.startApp(packageName);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cannot open app: $e')),
-        );
-      }
+      // Silent fail
     }
   }
 
-  void _showExitConfirmation() {
+  void _openQuran() {
+    // Push with full screen modal to avoid overlap issues
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => const _FocusModeQuranWrapper(),
+      ),
+    );
+  }
+
+  void _showExitSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      isDismissible: false,
-      enableDrag: false,
-      builder: (context) => _ExitConfirmationSheet(
-        onConfirm: () {
-          ref.read(focusModeProvider.notifier).toggleFocusMode();
-          Navigator.pop(context); // Close bottom sheet
-          Navigator.pop(context); // Exit focus mode screen
-        },
+      isDismissible: true,
+      builder: (context) => _MinimalExitSheet(
         focusMode: ref.read(focusModeProvider),
+        onExit: () {
+          ref.read(focusModeProvider.notifier).toggleFocusMode();
+          Navigator.pop(context);
+          Navigator.pop(context);
+        },
       ),
     );
+  }
+
+  void _incrementTasbih() {
+    HapticFeedback.lightImpact();
+    setState(() => _quickTasbihCount++);
+    ref.read(tasbihProvider.notifier).increment();
   }
 
   @override
   Widget build(BuildContext context) {
     final focusMode = ref.watch(focusModeProvider);
-    final themeColor = ref.watch(themeColorProvider);
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            // Main content
-            SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Column(
-                children: [
-                  // Header with time and focus indicator
-                  _buildHeader(focusMode),
-
-                  // Islamic Features Section
-                  _buildIslamicSection(themeColor),
-
-                  // Tasbih Counter Grid
-                  _buildTasbihGrid(themeColor),
-
-                  // Allowed apps section
-                  if (!_isLoading && _allowedApps.isNotEmpty)
-                    _buildAppsList(),
-
-                  const SizedBox(height: 100), // Bottom padding
-                ],
-              ),
-            ),
-
-            // Exit button positioned at top left
-            Positioned(
-              top: 16,
-              left: 16,
-              child: _buildExitButton(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(FocusModeSettings focusMode) {
     final startTime = focusMode.startTime ?? DateTime.now();
     final duration = DateTime.now().difference(startTime);
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes % 60;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(32, 48, 32, 24),
-      child: Column(
-        children: [
-          // Focus mode indicator
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.lock_clock, color: Colors.green.shade400, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'FOCUS MODE',
-                style: TextStyle(
-                  color: Colors.green.shade400,
-                  fontSize: 12,
-                  letterSpacing: 3,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Large clock
-          Text(
-            _currentTime,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.95),
-              fontSize: 64,
-              fontWeight: FontWeight.w200,
-              letterSpacing: -2,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Focus duration
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              hours > 0 ? '${hours}h ${minutes}m focused' : '${minutes}m focused',
-              style: TextStyle(
-                color: Colors.green.shade400,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildIslamicSection(AppThemeColor themeColor) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          // Daily Verse Card
-          _buildVerseCard(themeColor),
-          
-          const SizedBox(height: 12),
-          
-          // Daily Hadith Card
-          _buildHadithCard(themeColor),
-          
-          const SizedBox(height: 12),
-          
-          // Quran Access Button
-          _buildQuranAccessButton(themeColor),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVerseCard(AppThemeColor themeColor) {
-    final verseAsync = ref.watch(randomVerseProvider);
     
-    return verseAsync.when(
-      data: (verse) {
-        if (verse == null) return const SizedBox.shrink();
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: const Color(0xFF40C463).withValues(alpha: 0.2),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome, color: themeColor.color, size: 16),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Daily Verse',
-                    style: TextStyle(
-                      color: themeColor.color,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => ref.invalidate(randomVerseProvider),
-                    child: Icon(
-                      Icons.refresh,
-                      color: Colors.grey[600],
-                      size: 18,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                verse['arabic'] as String,
-                textAlign: TextAlign.right,
-                textDirection: ui.TextDirection.rtl,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  height: 1.8,
-                ),
-              ),
-              if (verse['translation'] != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  verse['translation'] as String,
-                  style: TextStyle(
-                    color: Colors.grey[400],
-                    fontSize: 13,
-                    height: 1.5,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
+    // Block back gestures and swipes
+    return PopScope(
+      canPop: false, // Prevent back button/gesture
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _showExitSheet(); // Show exit confirmation instead
+        }
       },
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildHadithCard(AppThemeColor themeColor) {
-    final hadithAsync = ref.watch(refreshableDailyHadithProvider);
-    
-    return hadithAsync.when(
-      data: (hadith) {
-        if (hadith == null) return const SizedBox.shrink();
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.amber.withValues(alpha: 0.2),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.format_quote, color: Colors.amber, size: 16),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Daily Hadith',
-                    style: TextStyle(
-                      color: Colors.amber,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    hadith.collection,
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                hadith.text.length > 150 
-                    ? '${hadith.text.substring(0, 150)}...'
-                    : hadith.text,
-                style: TextStyle(
-                  color: Colors.grey[300],
-                  fontSize: 14,
-                  height: 1.6,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildQuranAccessButton(AppThemeColor themeColor) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SurahListScreen()),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              themeColor.color.withValues(alpha: 0.15),
-              themeColor.color.withValues(alpha: 0.05),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: themeColor.color.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: themeColor.color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                Icons.menu_book_outlined,
-                color: themeColor.color,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Read Quran',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    'Continue your spiritual journey',
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: themeColor.color,
-              size: 16,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTasbihGrid(AppThemeColor themeColor) {
-    // Watch to trigger rebuilds
-    ref.watch(tasbihProvider);
-    
-    // Show first 4 dhikr options as quick counters
-    final quickDhikrs = Dhikr.presets.take(4).toList();
-    
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.auto_awesome, color: Colors.purple.shade300, size: 16),
-              const SizedBox(width: 8),
-              Text(
-                'QUICK TASBIH',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  fontSize: 11,
-                  letterSpacing: 2,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.5,
-            ),
-            itemCount: quickDhikrs.length,
-            itemBuilder: (context, index) {
-              final dhikr = quickDhikrs[index];
-              final count = ref.read(tasbihProvider.notifier).getCountForDhikr(index);
-              final isComplete = count >= dhikr.defaultTarget;
-              
-              return GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  // Select this dhikr and increment
-                  ref.read(tasbihProvider.notifier).selectDhikr(index);
-                  ref.read(tasbihProvider.notifier).increment();
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isComplete 
-                        ? Colors.green.withValues(alpha: 0.15)
-                        : Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: isComplete
-                          ? Colors.green.withValues(alpha: 0.4)
-                          : Colors.white.withValues(alpha: 0.1),
-                    ),
-                  ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: GestureDetector(
+            // Tap anywhere to count tasbih
+            onTap: _incrementTasbih,
+            // Block horizontal swipes
+            onHorizontalDragEnd: (_) {}, // Consume swipe gestures
+            behavior: HitTestBehavior.opaque,
+            child: Stack(
+              children: [
+                // Main content - vertically centered
+                Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      const Spacer(flex: 2),
+                      
+                      // Time - Large, calm, central focus point
                       Text(
-                        dhikr.transliteration,
+                        _currentTime,
                         style: TextStyle(
-                          color: isComplete ? Colors.green.shade400 : Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '$count / ${dhikr.defaultTarget}',
-                        style: TextStyle(
-                          color: isComplete 
-                              ? Colors.green.shade400 
-                              : Colors.grey[500],
-                          fontSize: 18,
-                          fontWeight: FontWeight.w300,
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 72,
+                          fontWeight: FontWeight.w100,
+                          letterSpacing: -4,
                         ),
                       ),
-                      if (isComplete)
-                        const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                      
+                      const SizedBox(height: 8),
+                      
+                      // Duration - Subtle, non-intrusive
+                      Text(
+                        _formatDuration(duration),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.3),
+                          fontSize: 14,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      
+                      const Spacer(flex: 1),
+                      
+                      // Tasbih counter
+                      Column(
+                        children: [
+                          Text(
+                            '$_quickTasbihCount',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              fontSize: 100,
+                              fontWeight: FontWeight.w100,
+                            ),
+                          ),
+                          Text(
+                            'tasbih count',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              fontSize: 12,
+                              letterSpacing: 2,
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      const Spacer(flex: 2),
                     ],
                   ),
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAppsList() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'ALLOWED APPS',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.4),
-              fontSize: 11,
-              letterSpacing: 2,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: _allowedApps.map((app) => GestureDetector(
-              onTap: () => _launchApp(app.packageName),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  app.name,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 14,
+                
+                // Exit button - Top left, very subtle
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  child: GestureDetector(
+                    onTap: _showExitSheet,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      child: Icon(
+                        Icons.close,
+                        color: Colors.white.withValues(alpha: 0.2),
+                        size: 20,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            )).toList(),
+                
+                // Quran access - Top right, subtle
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: GestureDetector(
+                    onTap: _openQuran,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      child: Icon(
+                        Icons.menu_book_outlined,
+                        color: Colors.white.withValues(alpha: 0.2),
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+                
+                // Allowed apps - Bottom, minimal
+                if (!_isLoading && _allowedApps.isNotEmpty)
+                  Positioned(
+                    bottom: 40,
+                    left: 0,
+                    right: 0,
+                    child: _buildAllowedApps(),
+                  ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildExitButton() {
-    return GestureDetector(
-      onTap: _showExitConfirmation,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(
-          Icons.close,
-          color: Colors.white.withValues(alpha: 0.6),
-          size: 20,
-        ),
-      ),
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes % 60;
+    if (hours > 0) {
+      return '${hours}h ${minutes}m focused';
+    }
+    return '${minutes}m focused';
+  }
+
+  Widget _buildAllowedApps() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: _allowedApps.take(5).map((app) {
+        return GestureDetector(
+          onTap: () => _launchApp(app.packageName),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              app.name.substring(0, app.name.length > 8 ? 8 : app.name.length),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.25),
+                fontSize: 11,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
 
-/// Exit Confirmation Sheet with 30-second wait and Islamic reminder
-class _ExitConfirmationSheet extends StatefulWidget {
-  final VoidCallback onConfirm;
-  final FocusModeSettings focusMode;
+/// Quran wrapper for Focus Mode - prevents navigation issues
+class _FocusModeQuranWrapper extends StatelessWidget {
+  const _FocusModeQuranWrapper();
 
-  const _ExitConfirmationSheet({
-    required this.onConfirm,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white70),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Quran',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 18,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: const SurahListScreen(isEmbedded: true),
+    );
+  }
+}
+
+/// Minimal Exit Sheet - Uses psychology of commitment
+class _MinimalExitSheet extends StatefulWidget {
+  final FocusModeSettings focusMode;
+  final VoidCallback onExit;
+
+  const _MinimalExitSheet({
     required this.focusMode,
+    required this.onExit,
   });
 
   @override
-  State<_ExitConfirmationSheet> createState() => _ExitConfirmationSheetState();
+  State<_MinimalExitSheet> createState() => _MinimalExitSheetState();
 }
 
-class _ExitConfirmationSheetState extends State<_ExitConfirmationSheet> {
+class _MinimalExitSheetState extends State<_MinimalExitSheet> {
   int _secondsRemaining = 30;
   Timer? _timer;
   bool _canExit = false;
 
-  // Islamic reminders about patience and perseverance
-  static const List<String> _islamicReminders = [
-    '"Indeed, Allah is with the patient."\n— Quran 2:153',
-    '"So be patient. Indeed, the promise of Allah is truth."\n— Quran 30:60',
-    '"And seek help through patience and prayer."\n— Quran 2:45',
-    '"The strong believer is better than the weak believer."\n— Hadith (Muslim)',
-    '"Whoever persists in patience, Allah will make him patient."\n— Hadith (Bukhari)',
-    '"Take benefit of five before five: your youth before old age, your health before sickness..."\n— Hadith',
+  // Simple, non-preachy reminders
+  static const List<String> _reminders = [
+    'Patience is half of faith.',
+    'A moment of patience in anger saves a thousand moments of regret.',
+    'The strong is not the one who overcomes people, but the one who controls himself.',
+    'Verily, with hardship comes ease.',
   ];
 
-  late String _selectedReminder;
+  late String _reminder;
 
   @override
   void initState() {
     super.initState();
-    _selectedReminder = _islamicReminders[DateTime.now().second % _islamicReminders.length];
+    _reminder = _reminders[DateTime.now().second % _reminders.length];
     _startCountdown();
   }
 
@@ -673,175 +361,85 @@ class _ExitConfirmationSheetState extends State<_ExitConfirmationSheet> {
     super.dispose();
   }
 
-  String _getFocusedDuration() {
-    final startTime = widget.focusMode.startTime ?? DateTime.now();
-    final duration = DateTime.now().difference(startTime);
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes % 60;
-    if (hours > 0) return '${hours}h ${minutes}m';
-    return '${minutes}m';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
+      margin: const EdgeInsets.all(16),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A1A1A),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
+        color: const Color(0xFF0A0A0A),
+        borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Warning icon
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.red.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.warning_amber_rounded,
-              color: Colors.red,
-              size: 40,
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Title
-          const Text(
-            'End Focus Mode?',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Duration info
-          Text(
-            'You\'ve been focused for ${_getFocusedDuration()}',
-            style: TextStyle(
-              color: Colors.grey[400],
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Islamic reminder
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.amber.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.amber.withValues(alpha: 0.3),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Reminder - subtle, not preachy
+            Text(
+              _reminder,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.4),
+                fontSize: 14,
+                fontStyle: FontStyle.italic,
+                height: 1.5,
               ),
             ),
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.auto_awesome,
-                  color: Colors.amber,
-                  size: 20,
+            
+            const SizedBox(height: 32),
+            
+            // Countdown or button
+            if (!_canExit)
+              // Countdown - simple number
+              Text(
+                '$_secondsRemaining',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  fontSize: 48,
+                  fontWeight: FontWeight.w100,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _selectedReminder,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.amber.shade100,
-                    fontSize: 14,
-                    height: 1.5,
-                    fontStyle: FontStyle.italic,
+              )
+            else
+              // Exit button - subdued, not alarming
+              GestureDetector(
+                onTap: widget.onExit,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Text(
+                    'end session',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 14,
+                      letterSpacing: 1,
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Countdown or Exit button
-          if (!_canExit) ...[
-            // Countdown timer
-            Column(
-              children: [
-                SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      CircularProgressIndicator(
-                        value: _secondsRemaining / 30,
-                        strokeWidth: 4,
-                        backgroundColor: Colors.grey[800],
-                        valueColor: const AlwaysStoppedAnimation(Colors.red),
-                      ),
-                      Text(
-                        '$_secondsRemaining',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w300,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Wait to unlock exit',
-                  style: TextStyle(
-                    color: Colors.grey[500],
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ] else ...[
-            // Exit button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: widget.onConfirm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade700,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'End Focus Mode',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+              ),
+            
+            const SizedBox(height: 20),
+            
+            // Continue button - more prominent than exit
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Text(
+                'continue',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1,
                 ),
               ),
             ),
           ],
-          const SizedBox(height: 12),
-
-          // Cancel button
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              _canExit ? 'Keep Focusing' : 'Cancel',
-              style: TextStyle(
-                color: Colors.green.shade400,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
-        ],
+        ),
       ),
     );
   }

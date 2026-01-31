@@ -41,6 +41,12 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.light,
     ),
   );
+  
+  // Enable edge-to-edge mode - this helps reduce system gesture interference
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.edgeToEdge,
+    overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
+  );
   await Hive.openBox('wallpaperBox');
 
   runApp(const ProviderScope(child: MinimalistLauncherApp()));
