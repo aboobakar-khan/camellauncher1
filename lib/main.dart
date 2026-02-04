@@ -79,6 +79,18 @@ class MinimalistLauncherApp extends ConsumerWidget {
         primarySwatch: Colors.grey,
         useMaterial3: true,
         fontFamily: appFont.fontFamily,
+        // Prevent any default underlines
+        textTheme: const TextTheme().apply(
+          decoration: TextDecoration.none,
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+        ),
+        dividerTheme: const DividerThemeData(
+          color: Colors.transparent,
+        ),
       ),
       home: const LauncherShell(),
     );

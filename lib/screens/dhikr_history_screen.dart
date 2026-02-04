@@ -1,21 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../providers/dhikr_history_provider.dart';
 import '../providers/tasbih_provider.dart';
 
-/// Clean, Focused Dhikr History Screen
-/// 
-/// Design Philosophy:
-/// - Essential data only
-/// - Clear session history as the main focus
-/// - Simple analytics that matter
+/// Simple Dhikr History Screen - Single unified view
+/// Shows data directly from TasbihState (existing tracking)
 class DhikrHistoryScreen extends ConsumerWidget {
   const DhikrHistoryScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final history = ref.watch(dhikrHistoryProvider);
     final tasbihState = ref.watch(tasbihProvider);
 
     return Scaffold(
@@ -23,14 +17,51 @@ class DhikrHistoryScreen extends ConsumerWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Clean header
-            _buildHeader(context, history, tasbihState),
+            // Header
+            _buildHeader(context),
             
-            // Main content - Session History
+            // Main content
             Expanded(
-              child: history.sessions.isEmpty
-                  ? _buildEmptyState()
-                  : _buildSessionsList(history),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Streak card
+                    _StreakCard(
+                      streakDays: tasbihState.streakDays,
+                      totalAllTime: tasbihState.totalAllTime,
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Quick stats row
+                    _QuickStats(
+                      todayCount: tasbihState.todayCount,
+                      monthlyTotal: tasbihState.monthlyTotal,
+                      completedTargets: tasbihState.completedTargets,
+                    ),
+                    
+                    const SizedBox(height: 28),
+                    
+                    // Dhikr types breakdown
+                    _buildSectionTitle('Dhikr Breakdown'),
+                    const SizedBox(height: 12),
+                    _DhikrBreakdown(dhikrCounts: tasbihState.dhikrCounts),
+                    
+                    const SizedBox(height: 28),
+                    
+                    // Achievements
+                    _buildSectionTitle('Achievements'),
+                    const SizedBox(height: 12),
+                    _AchievementsList(
+                      unlockedAchievements: tasbihState.unlockedAchievements,
+                    ),
+                    
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -38,75 +69,125 @@ class DhikrHistoryScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context, DhikrHistoryState history, TasbihState tasbihState) {
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.arrow_back,
+                color: Colors.white.withValues(alpha: 0.6),
+                size: 20,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            'Dhikr History',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.6),
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        letterSpacing: 0.5,
+      ),
+    );
+  }
+}
+
+/// Streak highlight card
+class _StreakCard extends StatelessWidget {
+  final int streakDays;
+  final int totalAllTime;
+
+  const _StreakCard({
+    required this.streakDays,
+    required this.totalAllTime,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF40C463).withValues(alpha: 0.15),
+            const Color(0xFF40C463).withValues(alpha: 0.05),
+          ],
         ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF40C463).withValues(alpha: 0.2)),
       ),
-      child: Column(
+      child: Row(
         children: [
-          // Top row - back button and title
-          Row(
+          // Streak
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(10),
+              Row(
+                children: [
+                  const Text('🔥', style: TextStyle(fontSize: 28)),
+                  const SizedBox(width: 10),
+                  Text(
+                    '$streakDays',
+                    style: const TextStyle(
+                      color: Color(0xFF40C463),
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                  child: Icon(
-                    Icons.arrow_back,
-                    color: Colors.white.withValues(alpha: 0.6),
-                    size: 20,
-                  ),
-                ),
+                ],
               ),
-              const SizedBox(width: 16),
+              const SizedBox(height: 4),
               Text(
-                'Dhikr History',
+                streakDays == 1 ? 'Day Streak' : 'Days Streak',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
+                  color: Colors.white.withValues(alpha: 0.5),
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
-          
-          const SizedBox(height: 20),
-          
-          // Essential stats - compact row
-          Row(
+          const Spacer(),
+          // Total all time
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _StatPill(
-                icon: '📿',
-                value: _formatNumber(history.totalAllTime),
-                label: 'Total',
-              ),
-              const SizedBox(width: 12),
-              _StatPill(
-                icon: '🔥',
-                value: '${tasbihState.streakDays}',
-                label: 'Streak',
-                highlight: tasbihState.streakDays > 0,
-              ),
-              const SizedBox(width: 12),
-              _StatPill(
-                icon: '📅',
-                value: '${tasbihState.todayCount}',
-                label: 'Today',
-              ),
-              const Spacer(),
-              // Sessions count
               Text(
-                '${history.sessions.length} sessions',
+                _formatNumber(totalAllTime),
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.3),
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontSize: 28,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Total Dhikr',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
                   fontSize: 12,
                 ),
               ),
@@ -114,92 +195,6 @@ class DhikrHistoryScreen extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.03),
-              shape: BoxShape.circle,
-            ),
-            child: const Text('📿', style: TextStyle(fontSize: 48)),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'No Sessions Yet',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 18,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Complete a dhikr target to see your history',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.3),
-              fontSize: 13,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSessionsList(DhikrHistoryState history) {
-    final grouped = history.groupedSessions;
-    final periods = ['Today', 'Yesterday', 'This Week', 'This Month', 'Earlier'];
-    
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      itemCount: periods.length,
-      itemBuilder: (context, index) {
-        final period = periods[index];
-        final sessions = grouped[period];
-        
-        if (sessions == null || sessions.isEmpty) {
-          return const SizedBox.shrink();
-        }
-        
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Period header
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 12),
-              child: Row(
-                children: [
-                  Text(
-                    period,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${sessions.fold(0, (sum, s) => sum + s.count)} total',
-                    style: TextStyle(
-                      color: const Color(0xFF40C463).withValues(alpha: 0.6),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Sessions
-            ...sessions.map((session) => _SessionCard(session: session)),
-            const SizedBox(height: 8),
-          ],
-        );
-      },
     );
   }
 
@@ -210,62 +205,89 @@ class DhikrHistoryScreen extends ConsumerWidget {
   }
 }
 
-/// Compact stat pill
-class _StatPill extends StatelessWidget {
+/// Quick stats row
+class _QuickStats extends StatelessWidget {
+  final int todayCount;
+  final int monthlyTotal;
+  final int completedTargets;
+
+  const _QuickStats({
+    required this.todayCount,
+    required this.monthlyTotal,
+    required this.completedTargets,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _StatBox(
+            icon: '📅',
+            value: '$todayCount',
+            label: 'Today',
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _StatBox(
+            icon: '📆',
+            value: '$monthlyTotal',
+            label: 'This Month',
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _StatBox(
+            icon: '✅',
+            value: '$completedTargets',
+            label: 'Completed',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatBox extends StatelessWidget {
   final String icon;
   final String value;
   final String label;
-  final bool highlight;
 
-  const _StatPill({
+  const _StatBox({
     required this.icon,
     required this.value,
     required this.label,
-    this.highlight = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: highlight 
-            ? const Color(0xFF40C463).withValues(alpha: 0.1)
-            : Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: highlight 
-              ? const Color(0xFF40C463).withValues(alpha: 0.2)
-              : Colors.white.withValues(alpha: 0.05),
-        ),
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
         children: [
-          Text(icon, style: const TextStyle(fontSize: 14)),
-          const SizedBox(width: 6),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  color: highlight 
-                      ? const Color(0xFF40C463)
-                      : Colors.white.withValues(alpha: 0.8),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Text(
-                label,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.3),
-                  fontSize: 9,
-                ),
-              ),
-            ],
+          Text(icon, style: const TextStyle(fontSize: 18)),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.4),
+              fontSize: 10,
+            ),
           ),
         ],
       ),
@@ -273,123 +295,203 @@ class _StatPill extends StatelessWidget {
   }
 }
 
-/// Individual session card - detailed
-class _SessionCard extends StatelessWidget {
-  final DhikrSession session;
+/// Dhikr breakdown - shows count per dhikr type
+class _DhikrBreakdown extends StatelessWidget {
+  final Map<int, int> dhikrCounts;
 
-  const _SessionCard({required this.session});
+  const _DhikrBreakdown({required this.dhikrCounts});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.025),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
-      ),
-      child: Row(
-        children: [
-          // Count badge
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF40C463).withValues(alpha: 0.2),
-                  const Color(0xFF40C463).withValues(alpha: 0.1),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                '${session.count}',
-                style: const TextStyle(
-                  color: Color(0xFF40C463),
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          
-          // Dhikr info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Arabic text
-                Text(
-                  session.arabicText,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    fontSize: 16,
-                    height: 1.3,
-                  ),
-                  textDirection: TextDirection.rtl,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                // Transliteration
-                Text(
-                  session.dhikrName,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.4),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          // Time
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+    if (dhikrCounts.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Center(
+          child: Column(
             children: [
+              const Text('📿', style: TextStyle(fontSize: 32)),
+              const SizedBox(height: 12),
               Text(
-                session.formattedTime,
+                'No dhikr recorded yet',
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 13,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 4),
               Text(
-                _getRelativeDate(session.timestamp),
+                'Start counting to see your breakdown',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.25),
-                  fontSize: 10,
+                  fontSize: 11,
                 ),
               ),
             ],
           ),
-        ],
-      ),
+        ),
+      );
+    }
+
+    // Sort by count (highest first)
+    final sorted = dhikrCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final maxCount = sorted.first.value;
+
+    return Column(
+      children: sorted.map((entry) {
+        final dhikr = Dhikr.presets[entry.key];
+        final percentage = maxCount > 0 ? entry.value / maxCount : 0.0;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.025),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      dhikr.arabic,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        fontSize: 16,
+                      ),
+                      textDirection: TextDirection.rtl,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${entry.value}',
+                    style: const TextStyle(
+                      color: Color(0xFF40C463),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Progress bar
+              Stack(
+                children: [
+                  Container(
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  FractionallySizedBox(
+                    widthFactor: percentage.clamp(0.0, 1.0),
+                    child: Container(
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF40C463),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                dhikr.transliteration,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.35),
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
+}
 
-  String _getRelativeDate(DateTime timestamp) {
-    final now = DateTime.now();
-    final diff = now.difference(timestamp);
-    
-    if (diff.inMinutes < 60) {
-      return '${diff.inMinutes}m ago';
-    } else if (diff.inHours < 24) {
-      return '${diff.inHours}h ago';
-    } else if (diff.inDays == 1) {
-      return 'Yesterday';
-    } else if (diff.inDays < 7) {
-      return '${diff.inDays}d ago';
-    } else {
-      return '${timestamp.day}/${timestamp.month}';
-    }
+/// Achievements list
+class _AchievementsList extends StatelessWidget {
+  final List<String> unlockedAchievements;
+
+  const _AchievementsList({required this.unlockedAchievements});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: DhikrAchievement.values.map((achievement) {
+        final isUnlocked = unlockedAchievements.contains(achievement.name);
+        
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '${achievement.emoji} ${achievement.name}: ${achievement.description}',
+                ),
+                backgroundColor: isUnlocked 
+                    ? const Color(0xFF40C463).withValues(alpha: 0.9) 
+                    : Colors.grey.withValues(alpha: 0.9),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+          },
+          child: Container(
+            width: 70,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: isUnlocked 
+                  ? const Color(0xFF40C463).withValues(alpha: 0.12)
+                  : Colors.white.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isUnlocked 
+                    ? const Color(0xFF40C463).withValues(alpha: 0.25)
+                    : Colors.white.withValues(alpha: 0.05),
+              ),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  achievement.emoji,
+                  style: TextStyle(
+                    fontSize: 26,
+                    color: isUnlocked ? null : Colors.grey.withValues(alpha: 0.5),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  achievement.name.split(' ').first,
+                  style: TextStyle(
+                    color: isUnlocked 
+                        ? const Color(0xFF40C463)
+                        : Colors.white.withValues(alpha: 0.25),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
   }
 }

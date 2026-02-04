@@ -342,6 +342,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                             color: Colors.white.withValues(alpha: 0.5),
                             fontSize: 12,
                             letterSpacing: 1.5,
+                            decoration: TextDecoration.none,
                           ),
                         ),
                         if (isRefreshing) ...[
@@ -505,19 +506,12 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
         .isFavorite(app.packageName);
 
     return RepaintBoundary(
-      child: InkWell(
+      child: GestureDetector(
         onTap: () => _launchApp(app.packageName),
         onLongPress: () => _showAppOptions(context, app, ref),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                color: Colors.white.withValues(alpha: 0.03),
-                width: 1,
-              ),
-            ),
-          ),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
           child: Row(
             children: [
               // Text only - no icons
@@ -529,6 +523,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                     fontSize: 17,
                     letterSpacing: 0.8,
                     fontWeight: FontWeight.w300,
+                    decoration: TextDecoration.none, // Explicitly no underline
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -540,7 +535,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                   padding: const EdgeInsets.only(left: 8),
                   child: Icon(
                     Icons.star,
-                    color: Colors.amber.withValues(alpha: 0.5),
+                    color: Colors.white.withValues(alpha: 0.3),
                     size: 14,
                   ),
                 ),
