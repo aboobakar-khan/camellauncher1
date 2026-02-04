@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/wallpaper_provider.dart';
 import '../providers/theme_provider.dart';
+import '../services/offline_content_manager.dart';
 import 'home_clock_screen.dart';
 import 'widget_dashboard_screen.dart';
 import 'app_list_screen.dart';
 import '../features/quran/screens/surah_list_screen.dart';
-import '../features/hadith_dua/screens/hadith_dua_screen.dart';
+import '../features/hadith_dua/screens/minimalist_hadith_screen.dart';
+import '../features/hadith_dua/screens/minimalist_dua_screen.dart';
 
 /// Main launcher shell with swipeable pages
 /// Layout: [Islamic Hub] ← [Dashboard] ← [HOME] → [App List]
@@ -46,6 +48,10 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
   @override
   Widget build(BuildContext context) {
     final wallpaper = ref.watch(wallpaperProvider);
+    
+    // Initialize offline content manager for automatic background downloads
+    // This starts downloading Tafseer, Hadith, and Duas when online
+    ref.read(offlineContentProvider);
 
     // Block system back gesture for launcher
     return PopScope(
@@ -200,7 +206,7 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
   }
 }
 
-/// Islamic Hub - Combined Quran + Hadith/Dua with clean tabs
+/// Islamic Hub - Quran, Hadith, Dua with clean tabs
 class IslamicHubScreen extends ConsumerStatefulWidget {
   const IslamicHubScreen({super.key});
 
@@ -215,7 +221,7 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -233,106 +239,75 @@ class _IslamicHubScreenState extends ConsumerState<IslamicHubScreen>
       body: SafeArea(
         child: Column(
           children: [
-            // Header with prominent tabs
+            // Header with 3 tabs
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
                   // Quran tab
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => _tabController.animateTo(0),
-                      child: AnimatedBuilder(
-                        animation: _tabController,
-                        builder: (context, _) {
-                          final isSelected = _tabController.index == 0;
-                          return Container(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            decoration: BoxDecoration(
-                              color: isSelected 
-                                  ? themeColor.color.withValues(alpha: 0.12)
-                                  : Colors.white.withValues(alpha: 0.04),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected 
-                                    ? themeColor.color.withValues(alpha: 0.3)
-                                    : Colors.white.withValues(alpha: 0.08),
-                              ),
-                            ),
-                            child: Text(
-                              'Quran',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: isSelected 
-                                    ? Colors.white 
-                                    : Colors.white.withValues(alpha: 0.5),
-                                fontSize: 16,
-                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  
-                  const SizedBox(width: 12),
-                  
+                  _buildTabButton(0, 'Quran', themeColor.color),
+                  const SizedBox(width: 8),
                   // Hadith tab
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => _tabController.animateTo(1),
-                      child: AnimatedBuilder(
-                        animation: _tabController,
-                        builder: (context, _) {
-                          final isSelected = _tabController.index == 1;
-                          return Container(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            decoration: BoxDecoration(
-                              color: isSelected 
-                                  ? themeColor.color.withValues(alpha: 0.12)
-                                  : Colors.white.withValues(alpha: 0.04),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isSelected 
-                                    ? themeColor.color.withValues(alpha: 0.3)
-                                    : Colors.white.withValues(alpha: 0.08),
-                              ),
-                            ),
-                            child: Text(
-                              'Hadith',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: isSelected 
-                                    ? Colors.white 
-                                    : Colors.white.withValues(alpha: 0.5),
-                                fontSize: 16,
-                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
+                  _buildTabButton(1, 'Hadith', themeColor.color),
+                  const SizedBox(width: 8),
+                  // Dua tab
+                  _buildTabButton(2, 'Dua', themeColor.color),
                 ],
               ),
             ),
 
-            // Content - swipe disabled so main page navigation works
+            // Content
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                physics: const NeverScrollableScrollPhysics(), // Disable swipe - tap to switch tabs
+                physics: const NeverScrollableScrollPhysics(),
                 children: const [
                   SurahListScreen(),
-                  HadithDuaScreen(),
+                  MinimalistHadithScreen(),
+                  MinimalistDuaScreen(),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabButton(int index, String label, Color themeColor) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _tabController.animateTo(index),
+        child: AnimatedBuilder(
+          animation: _tabController,
+          builder: (context, _) {
+            final isSelected = _tabController.index == index;
+            return Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: isSelected 
+                    ? themeColor.withValues(alpha: 0.12)
+                    : Colors.white.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isSelected 
+                      ? themeColor.withValues(alpha: 0.3)
+                      : Colors.white.withValues(alpha: 0.08),
+                ),
+              ),
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isSelected 
+                      ? Colors.white 
+                      : Colors.white.withValues(alpha: 0.5),
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            );
+          },
         ),
       ),
     );

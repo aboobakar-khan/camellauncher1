@@ -97,6 +97,76 @@ class HadithDuaService {
     return [];
   }
 
+  /// Download hadiths for offline storage - ALWAYS fetches fresh from API
+  /// This bypasses the in-memory cache to ensure we get the actual data
+  Future<List<Hadith>> downloadHadithsForOffline(HadithCollection collection, {Function(int, int)? onProgress}) async {
+    print('HadithDuaService: Starting FRESH download for ${collection.name}...');
+    
+    try {
+      final url = '/editions/${collection.apiKey}.min.json';
+      print('HadithDuaService: Fetching from $url');
+      
+      final response = await _fetchWithFallback(url);
+      
+      if (response == null) {
+        print('HadithDuaService: Failed to fetch ${collection.name} - no response');
+        return [];
+      }
+      
+      print('HadithDuaService: Got response for ${collection.name}, parsing...');
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      
+      // Get sections for reference
+      final metadata = data['metadata'] as Map<String, dynamic>?;
+      final sections = metadata?['section'] as Map<String, dynamic>? ?? {};
+      _sectionsCache[collection.id] = sections.map(
+        (key, value) => MapEntry(key, value.toString()),
+      );
+      
+      // Parse hadiths with enhanced data
+      final hadithsData = data['hadiths'] as List<dynamic>? ?? [];
+      final hadiths = <Hadith>[];
+      
+      print('HadithDuaService: Parsing ${hadithsData.length} hadiths from ${collection.name}...');
+      
+      for (int i = 0; i < hadithsData.length; i++) {
+        final h = hadithsData[i];
+        try {
+          var hadith = Hadith.fromJson(
+            h as Map<String, dynamic>,
+            collection: collection.name,
+            section: _getSectionForHadith(collection.id, h['hadithnumber'] as int? ?? 0),
+            sectionDetails: _sectionsCache[collection.id],
+          );
+          
+          // Apply default grade for sahih collections if not graded
+          if (hadith.grade == HadithGrade.unknown && collection.defaultGrade != HadithGrade.unknown) {
+            hadith = hadith.copyWith(grade: collection.defaultGrade);
+          }
+          
+          hadiths.add(hadith);
+          
+          // Report progress every 500 hadiths
+          if (onProgress != null && i % 500 == 0) {
+            onProgress(i, hadithsData.length);
+          }
+        } catch (e) {
+          // Skip malformed hadith
+          continue;
+        }
+      }
+
+      // Also update in-memory cache
+      _hadithCache[collection.id] = hadiths;
+      
+      print('HadithDuaService: ✓ Downloaded ${hadiths.length} hadiths from ${collection.name}');
+      return hadiths;
+    } catch (e) {
+      print('HadithDuaService: Error downloading ${collection.name}: $e');
+      return [];
+    }
+  }
+
   /// Fetch a specific range of hadiths (for faster loading)
   Future<List<Hadith>> fetchHadithsRange(HadithCollection collection, int start, int end) async {
     final hadiths = <Hadith>[];

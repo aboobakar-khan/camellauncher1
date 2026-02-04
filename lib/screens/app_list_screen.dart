@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:installed_apps/installed_apps.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/installed_app.dart';
@@ -14,6 +15,7 @@ import 'settings_screen.dart';
 
 /// App List Screen - Minimalist launcher
 /// Text-only, stored in Hive, loaded in memory, instant filtering
+/// Smart search: auto-opens single match, case-insensitive
 class AppListScreen extends ConsumerStatefulWidget {
   const AppListScreen({super.key});
 
@@ -24,24 +26,55 @@ class AppListScreen extends ConsumerStatefulWidget {
 class _AppListScreenState extends ConsumerState<AppListScreen>
     with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   String _searchQuery = '';
+  bool _hasAutoLaunched = false; // Prevent multiple auto-launches
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _searchController.addListener(() {
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  void _onSearchChanged() {
+    final newQuery = _searchController.text;
+    if (newQuery != _searchQuery) {
       setState(() {
-        _searchQuery = _searchController.text;
+        _searchQuery = newQuery;
+        _hasAutoLaunched = false; // Reset on new search
       });
-    });
+      
+      // Auto-open if single match
+      _checkAutoLaunch();
+    }
+  }
+
+  void _checkAutoLaunch() {
+    if (_hasAutoLaunched || _searchQuery.isEmpty) return;
+    
+    final installedAppsNotifier = ref.read(installedAppsProvider.notifier);
+    final filteredApps = installedAppsNotifier.filterApps(_searchQuery);
+    
+    // Auto-launch when exactly 1 result
+    if (filteredApps.length == 1) {
+      _hasAutoLaunched = true;
+      HapticFeedback.lightImpact();
+      
+      // Small delay to show the match before launching
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (mounted) {
+          _launchApp(filteredApps.first.packageName);
+          // Clear search after launch
+          _searchController.clear();
+        }
+      });
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    // When app comes back to foreground, refresh the app list
-    // This catches newly installed apps from Play Store
     if (state == AppLifecycleState.resumed) {
       _refreshAppList();
     }
@@ -57,11 +90,16 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
   Future<void> _launchApp(String packageName) async {
+    // Unfocus search when launching
+    _searchFocusNode.unfocus();
+    
     // Check if focus mode is blocking this app
     final focusModeNotifier = ref.read(focusModeProvider.notifier);
     if (focusModeNotifier.isAppBlocked(packageName)) {
@@ -77,7 +115,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     final interrupt = interruptNotifier.getInterrupt(packageName);
 
     if (interrupt != null && interrupt.isEnabled) {
-      // Show interrupt dialog
       final shouldProceed = await showDialog<bool>(
         context: context,
         barrierDismissible: false,
@@ -86,17 +123,15 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
       );
 
       if (shouldProceed != true) {
-        return; // User cancelled
+        return;
       }
     }
 
     // Launch the app
     try {
-      // Special handling for Google Pay - use native intent
       if (packageName.contains('paisa') || packageName.contains('googlepay')) {
         await AppSettingsService.launchGooglePay();
       } else if (packageName == 'net.one97.paytm') {
-        // Special handling for Paytm - open app settings as workaround
         await InstalledApps.startApp(packageName);
       } else {
         await InstalledApps.startApp(packageName);
@@ -125,7 +160,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // App name header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               child: Text(
@@ -153,16 +187,12 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
               ),
               onTap: () async {
                 Navigator.pop(context);
-
-                // Capture theme color before async operations
                 final color = themeColor.color;
 
-                // Hide the app in the hidden apps provider
                 await ref
                     .read(hiddenAppsProvider.notifier)
                     .hideApp(app.packageName, app.appName);
 
-                // Immediately remove from installed apps list using the proper notifier method
                 ref
                     .read(installedAppsProvider.notifier)
                     .removeApp(app.packageName);
@@ -197,7 +227,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
               onTap: () async {
                 Navigator.pop(context);
 
-                // Show confirmation dialog
                 await showDialog<bool>(
                   context: context,
                   builder: (context) => AlertDialog(
@@ -225,17 +254,14 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                         onPressed: () async {
                           Navigator.of(context).pop(false);
 
-                          // Immediately remove the app from the list (instant feedback)
                           ref
                               .read(installedAppsProvider.notifier)
                               .removeApp(app.packageName);
 
-                          // Trigger the uninstall dialog
                           await AppSettingsService.uninstallApp(
                             app.packageName,
                           );
 
-                          // Verify uninstall in background by refreshing after delay
                           Future.delayed(const Duration(seconds: 2), () {
                             if (mounted) {
                               _refreshAppList();
@@ -250,9 +276,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                     ],
                   ),
                 );
-
-                // The uninstall is now triggered directly from the dialog button
-                // No need for additional logic here
               },
             ),
           ],
@@ -289,21 +312,14 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Get apps from memory - instant, no cache needed
     final allApps = ref.watch(installedAppsProvider);
     final installedAppsNotifier = ref.watch(installedAppsProvider.notifier);
-
-    // Watch hidden apps to trigger rebuild when an app is hidden
     ref.watch(hiddenAppsProvider);
 
-    // Filter in memory - instant performance
     final filteredApps = installedAppsNotifier.filterApps(_searchQuery);
     final isRefreshing = installedAppsNotifier.isRefreshing;
-
-    // Theme color
     final themeColor = ref.watch(themeColorProvider);
 
-    // Remove view insets (like navigation bar) globally for this screen
     final mediaQuery = MediaQuery.of(context);
     return MediaQuery(
       data: mediaQuery.removeViewInsets(removeBottom: true),
@@ -312,15 +328,9 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
         child: SafeArea(
           child: Column(
             children: [
-              // Search bar
-              _buildSearchBar(themeColor),
-
-              // App count indicator and settings button
+              // Header with app count and settings
               Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -365,7 +375,7 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                 ),
               ),
 
-              // App list - always loaded from memory
+              // App list
               Expanded(
                 child: allApps.isEmpty
                     ? Center(
@@ -401,7 +411,6 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         itemCount: filteredApps.length,
-                        // Performance optimizations
                         cacheExtent: 500,
                         addAutomaticKeepAlives: false,
                         addRepaintBoundaries: true,
@@ -411,6 +420,9 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
                         },
                       ),
               ),
+
+              // Search bar at BOTTOM
+              _buildBottomSearchBar(themeColor),
             ],
           ),
         ),
@@ -418,49 +430,67 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
     );
   }
 
-  Widget _buildSearchBar(AppThemeColor themeColor) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
+  Widget _buildBottomSearchBar(AppThemeColor themeColor) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.3),
+        border: Border(
+          top: BorderSide(
+            color: Colors.white.withValues(alpha: 0.05),
+          ),
+        ),
+      ),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         style: TextStyle(
           color: themeColor.color.withValues(alpha: 0.9),
           fontSize: 16,
-          letterSpacing: 1.2,
+          letterSpacing: 1.0,
         ),
+        textInputAction: TextInputAction.search,
         decoration: InputDecoration(
-          hintText: 'Search apps...',
+          hintText: 'Type to search apps...',
           hintStyle: TextStyle(
-            color: themeColor.color.withValues(alpha: 0.3),
+            color: Colors.white.withValues(alpha: 0.25),
             fontSize: 16,
-            letterSpacing: 1.2,
+            letterSpacing: 0.5,
           ),
           filled: true,
           fillColor: Colors.white.withValues(alpha: 0.05),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+            borderRadius: BorderRadius.circular(24),
+            borderSide: BorderSide(color: themeColor.color.withValues(alpha: 0.3)),
           ),
-          prefixIcon: Icon(
-            Icons.search,
-            color: Colors.white.withValues(alpha: 0.3),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.only(left: 16, right: 8),
+            child: Icon(
+              Icons.search,
+              color: Colors.white.withValues(alpha: 0.3),
+              size: 20,
+            ),
           ),
+          prefixIconConstraints: const BoxConstraints(minWidth: 40),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
                   icon: Icon(
                     Icons.clear,
-                    color: Colors.white.withValues(alpha: 0.3),
+                    color: Colors.white.withValues(alpha: 0.4),
+                    size: 18,
                   ),
                   onPressed: () {
                     _searchController.clear();
+                    _searchFocusNode.unfocus();
                   },
                 )
               : null,
@@ -479,60 +509,41 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
         onTap: () => _launchApp(app.packageName),
         onLongPress: () => _showAppOptions(context, app, ref),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: Colors.white.withValues(alpha: 0.05),
+                color: Colors.white.withValues(alpha: 0.03),
                 width: 1,
               ),
             ),
           ),
           child: Row(
             children: [
+              // Text only - no icons
               Expanded(
                 child: Text(
                   app.appName,
                   style: TextStyle(
                     color: themeColor.color.withValues(alpha: 0.7),
-                    fontSize: 18,
-                    letterSpacing: 1.2,
+                    fontSize: 17,
+                    letterSpacing: 0.8,
                     fontWeight: FontWeight.w300,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              IconButton(
-                icon: Icon(
-                  isFavorite ? Icons.star : Icons.star_border,
-                  color: isFavorite
-                      ? Colors.amber.withValues(alpha: 0.8)
-                      : Colors.white.withValues(alpha: 0.3),
-                  size: 22,
+              // Favorite star (subtle)
+              if (isFavorite)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(
+                    Icons.star,
+                    color: Colors.amber.withValues(alpha: 0.5),
+                    size: 14,
+                  ),
                 ),
-                onPressed: () async {
-                  final success = await ref
-                      .read(favoriteAppsProvider.notifier)
-                      .toggleFavorite(app.packageName, app.appName);
-
-                  if (!success && mounted) {
-                    // Show message when limit is reached
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text(
-                          'Maximum 7 favorite apps allowed',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                        backgroundColor: Colors.red.shade700,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
-
-                  setState(() {}); // Force rebuild to update star icon
-                },
-              ),
             ],
           ),
         ),

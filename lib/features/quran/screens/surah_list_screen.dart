@@ -72,8 +72,9 @@ class _SurahListScreenState extends ConsumerState<SurahListScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black.withValues(alpha: 0.3),
-      body: Column(
-        children: [
+      body: SafeArea(
+        child: Column(
+          children: [
           // Resume Reading Card
           if (!readingProgress.isLoading && readingProgress.lastPosition != null)
             surahsAsync.when(
@@ -272,6 +273,7 @@ class _SurahListScreenState extends ConsumerState<SurahListScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

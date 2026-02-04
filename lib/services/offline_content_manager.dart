@@ -10,22 +10,23 @@ import 'dart:convert';
 
 /// Offline Content Download Manager
 /// 
-/// Best practices implemented:
-/// - Auto-download on first launch when internet available
-/// - Background downloading (non-blocking UI)
-/// - Progress tracking with persistence
-/// - Retry mechanism on failure
-/// - Connectivity-aware (pauses when offline)
-/// - Minimal impact on app performance
+/// Features:
+/// - Auto-download on first launch
+/// - Background downloading with progress
+/// - Connectivity-aware auto-resume
+/// - Manual re-download option
 
 class DownloadStatus {
   final bool isDownloading;
-  final double progress; // 0.0 to 1.0
+  final double progress;
   final String? currentItem;
   final bool tafseerComplete;
   final bool hadithComplete;
   final bool duaComplete;
   final String? error;
+  final int hadithsDownloaded;
+  final int tafseersDownloaded;
+  final DateTime? lastDownloadTime;
 
   const DownloadStatus({
     this.isDownloading = false,
@@ -35,6 +36,9 @@ class DownloadStatus {
     this.hadithComplete = false,
     this.duaComplete = false,
     this.error,
+    this.hadithsDownloaded = 0,
+    this.tafseersDownloaded = 0,
+    this.lastDownloadTime,
   });
 
   DownloadStatus copyWith({
@@ -45,6 +49,9 @@ class DownloadStatus {
     bool? hadithComplete,
     bool? duaComplete,
     String? error,
+    int? hadithsDownloaded,
+    int? tafseersDownloaded,
+    DateTime? lastDownloadTime,
   }) {
     return DownloadStatus(
       isDownloading: isDownloading ?? this.isDownloading,
@@ -54,6 +61,9 @@ class DownloadStatus {
       hadithComplete: hadithComplete ?? this.hadithComplete,
       duaComplete: duaComplete ?? this.duaComplete,
       error: error,
+      hadithsDownloaded: hadithsDownloaded ?? this.hadithsDownloaded,
+      tafseersDownloaded: tafseersDownloaded ?? this.tafseersDownloaded,
+      lastDownloadTime: lastDownloadTime ?? this.lastDownloadTime,
     );
   }
 
@@ -66,19 +76,44 @@ class DownloadStatus {
     if (duaComplete) completed++;
     return completed / 3.0;
   }
+
+  String get statusText {
+    if (isDownloading) {
+      return currentItem ?? 'Downloading...';
+    }
+    if (error != null) {
+      return 'Paused - will resume when online';
+    }
+    if (isComplete) {
+      return 'All content available offline';
+    }
+    return 'Tap to start download';
+  }
+
+  String get detailText {
+    final parts = <String>[];
+    if (hadithsDownloaded > 0) parts.add('$hadithsDownloaded hadiths');
+    if (tafseersDownloaded > 0) parts.add('$tafseersDownloaded surahs tafseer');
+    if (duaComplete) parts.add('All duas');
+    return parts.isEmpty ? 'No content downloaded yet' : parts.join(' • ');
+  }
 }
 
 class OfflineContentManager extends StateNotifier<DownloadStatus> {
-  static const String _boxName = 'offline_content';
+  static const String _boxName = 'offline_content_v2';
   static const String _statusKey = 'download_status';
   static const String _hadithCacheKey = 'hadith_cache';
   static const String _duaCacheKey = 'dua_cache';
+  static const String _hadithCountKey = 'hadith_count';
+  static const String _tafseerCountKey = 'tafseer_count';
+  static const String _lastDownloadKey = 'last_download';
   
   Box<String>? _box;
-  final TafseerService _tafseerService = TafseerService();
-  final HadithDuaService _hadithService = HadithDuaService();
+  TafseerService? _tafseerService;
+  HadithDuaService? _hadithService;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   bool _isInitialized = false;
+  bool _isPaused = false;
 
   OfflineContentManager() : super(const DownloadStatus()) {
     _init();
@@ -86,21 +121,31 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
 
   Future<void> _init() async {
     try {
+      debugPrint('OfflineContentManager: Initializing...');
       _box = await Hive.openBox<String>(_boxName);
-      await _tafseerService.init();
+      
+      _tafseerService = TafseerService();
+      await _tafseerService!.init();
+      
+      _hadithService = HadithDuaService();
       
       // Load saved status
       final savedStatus = _box?.get(_statusKey);
       if (savedStatus != null) {
         try {
           final json = jsonDecode(savedStatus) as Map<String, dynamic>;
+          final lastDownload = _box?.get(_lastDownloadKey);
           state = DownloadStatus(
             tafseerComplete: json['tafseerComplete'] as bool? ?? false,
             hadithComplete: json['hadithComplete'] as bool? ?? false,
             duaComplete: json['duaComplete'] as bool? ?? false,
+            hadithsDownloaded: int.tryParse(_box?.get(_hadithCountKey) ?? '0') ?? 0,
+            tafseersDownloaded: int.tryParse(_box?.get(_tafseerCountKey) ?? '0') ?? 0,
+            lastDownloadTime: lastDownload != null ? DateTime.tryParse(lastDownload) : null,
           );
+          debugPrint('OfflineContentManager: Loaded status - complete: ${state.isComplete}');
         } catch (e) {
-          debugPrint('Error loading download status: $e');
+          debugPrint('OfflineContentManager: Error loading status: $e');
         }
       }
       
@@ -111,8 +156,9 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
         _onConnectivityChanged,
       );
       
-      // Check if first launch and start download
+      // Auto-start download if not complete
       if (!state.isComplete) {
+        debugPrint('OfflineContentManager: Not complete, checking for auto-start...');
         _checkAndStartDownload();
       }
     } catch (e) {
@@ -127,13 +173,18 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
       r == ConnectivityResult.ethernet
     );
     
-    if (hasInternet && !state.isComplete && !state.isDownloading) {
+    debugPrint('OfflineContentManager: Connectivity changed, hasInternet: $hasInternet');
+    
+    if (hasInternet && !state.isComplete && !state.isDownloading && !_isPaused) {
       _checkAndStartDownload();
     }
   }
 
   Future<void> _checkAndStartDownload() async {
-    if (!_isInitialized || state.isDownloading) return;
+    if (!_isInitialized || state.isDownloading || _isPaused) {
+      debugPrint('OfflineContentManager: Cannot start - init:$_isInitialized, downloading:${state.isDownloading}, paused:$_isPaused');
+      return;
+    }
     
     // Check connectivity
     final connectivity = await Connectivity().checkConnectivity();
@@ -143,37 +194,58 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
       r == ConnectivityResult.ethernet
     );
     
-    if (!hasInternet) return;
+    if (!hasInternet) {
+      debugPrint('OfflineContentManager: No internet, skipping download');
+      return;
+    }
     
-    // Start background download
+    debugPrint('OfflineContentManager: Starting background download');
     startBackgroundDownload();
   }
 
   /// Start downloading all offline content
   Future<void> startBackgroundDownload() async {
-    if (state.isDownloading || state.isComplete) return;
+    if (state.isDownloading) {
+      debugPrint('OfflineContentManager: Already downloading');
+      return;
+    }
     
+    _isPaused = false;
     state = state.copyWith(isDownloading: true, error: null);
+    debugPrint('OfflineContentManager: Download started');
     
     try {
       // 1. Download Duas first (smallest, instant value)
       if (!state.duaComplete) {
+        debugPrint('OfflineContentManager: Downloading duas...');
         await _downloadDuas();
       }
       
-      // 2. Download Hadiths (medium size)
-      if (!state.hadithComplete) {
+      // 2. Download Hadiths
+      if (!state.hadithComplete && !_isPaused) {
+        debugPrint('OfflineContentManager: Downloading hadiths...');
         await _downloadHadiths();
       }
       
-      // 3. Download Tafseer (largest, most important)
-      if (!state.tafseerComplete) {
+      // 3. Download Tafseer (all 114 surahs)
+      if (!state.tafseerComplete && !_isPaused) {
+        debugPrint('OfflineContentManager: Downloading tafseer...');
         await _downloadTafseer();
       }
       
-      state = state.copyWith(isDownloading: false);
+      // Save completion time
+      if (state.isComplete) {
+        await _box?.put(_lastDownloadKey, DateTime.now().toIso8601String());
+        state = state.copyWith(
+          isDownloading: false,
+          lastDownloadTime: DateTime.now(),
+        );
+        debugPrint('OfflineContentManager: All downloads complete!');
+      } else {
+        state = state.copyWith(isDownloading: false);
+      }
     } catch (e) {
-      debugPrint('Download error: $e');
+      debugPrint('OfflineContentManager: Download error: $e');
       state = state.copyWith(
         isDownloading: false,
         error: 'Download paused. Will retry when connected.',
@@ -185,18 +257,17 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
     state = state.copyWith(currentItem: 'Downloading Duas...');
     
     try {
-      final duas = _hadithService.getCuratedDuas();
+      final duas = _hadithService!.getCuratedDuas();
       
-      // Cache duas locally using toJson
+      // Cache duas locally
       final duaJson = jsonEncode(duas.map((d) => d.toJson()).toList());
-      
       await _box?.put(_duaCacheKey, duaJson);
       
-      state = state.copyWith(duaComplete: true, progress: 0.33);
+      state = state.copyWith(duaComplete: true, progress: 0.1);
       await _saveStatus();
+      debugPrint('OfflineContentManager: Duas downloaded: ${duas.length}');
     } catch (e) {
-      debugPrint('Dua download error: $e');
-      // Don't fail completely, continue with other downloads
+      debugPrint('OfflineContentManager: Dua download error: $e');
     }
   }
 
@@ -204,7 +275,7 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
     state = state.copyWith(currentItem: 'Downloading Hadiths...');
     
     try {
-      // Download from main collections (Bukhari and Muslim)
+      // Download from main collections
       final collections = [
         HadithCollection.fromId('bukhari'),
         HadithCollection.fromId('muslim'),
@@ -213,17 +284,31 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
       List<Map<String, dynamic>> allHadiths = [];
       
       for (int i = 0; i < collections.length; i++) {
+        if (_isPaused) break;
+        
+        final collection = collections[i];
         state = state.copyWith(
-          currentItem: 'Downloading ${collections[i].name}...',
-          progress: 0.33 + (i / collections.length) * 0.33,
+          currentItem: 'Downloading ${collection.shortName}...',
+          progress: 0.1 + (i / collections.length) * 0.3,
         );
         
+        debugPrint('OfflineContentManager: Starting download for ${collection.name}...');
+        
         try {
-          // Fetch a good sample of hadiths (not all, to save space)
-          final hadiths = await _hadithService.fetchRandomSections(
-            collections[i],
-            sections: 5, // Get 5 random sections
+          // Use the NEW method that forces fresh API fetch
+          final hadiths = await _hadithService!.downloadHadithsForOffline(
+            collection,
+            onProgress: (current, total) {
+              state = state.copyWith(
+                currentItem: '${collection.shortName}: $current/$total hadiths',
+              );
+            },
           );
+          
+          if (hadiths.isEmpty) {
+            debugPrint('OfflineContentManager: WARNING - Got 0 hadiths from ${collection.name}!');
+            continue;
+          }
           
           for (final hadith in hadiths) {
             allHadiths.add({
@@ -240,62 +325,122 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
               'grade': hadith.grade.name,
             });
           }
+          
+          debugPrint('OfflineContentManager: Downloaded ${hadiths.length} hadiths from ${collection.shortName}');
         } catch (e) {
-          debugPrint('Error downloading ${collections[i].name}: $e');
+          debugPrint('OfflineContentManager: Error downloading ${collection.name}: $e');
         }
+        
+        await Future.delayed(const Duration(milliseconds: 500));
       }
       
-      // Cache hadiths locally
+      // Save hadiths to Hive
       if (allHadiths.isNotEmpty) {
+        debugPrint('OfflineContentManager: Saving ${allHadiths.length} hadiths to Hive...');
         await _box?.put(_hadithCacheKey, jsonEncode(allHadiths));
+        await _box?.put(_hadithCountKey, allHadiths.length.toString());
+        debugPrint('OfflineContentManager: ✓ Hadiths saved to Hive!');
+      } else {
+        debugPrint('OfflineContentManager: WARNING - No hadiths to save!');
       }
       
-      state = state.copyWith(hadithComplete: true, progress: 0.66);
+      state = state.copyWith(
+        hadithComplete: allHadiths.isNotEmpty, 
+        progress: 0.4,
+        hadithsDownloaded: allHadiths.length,
+      );
       await _saveStatus();
+      debugPrint('OfflineContentManager: Total hadiths cached: ${allHadiths.length}');
     } catch (e) {
-      debugPrint('Hadith download error: $e');
+      debugPrint('OfflineContentManager: Hadith download error: $e');
     }
   }
 
   Future<void> _downloadTafseer() async {
-    state = state.copyWith(currentItem: 'Downloading Tafseer...');
+    state = state.copyWith(currentItem: 'Preparing Tafseer download...');
     
     try {
-      // Download tafseer for first 10 surahs (most commonly read)
-      // This is a reasonable amount for offline access
-      final prioritySurahs = [1, 2, 3, 18, 36, 55, 56, 67, 78, 112, 113, 114];
+      // Surah verse counts
       final surahVerses = {
-        1: 7, 2: 286, 3: 200, 18: 110, 36: 83, 55: 78,
-        56: 96, 67: 30, 78: 40, 112: 4, 113: 5, 114: 6,
+        1: 7, 2: 286, 3: 200, 4: 176, 5: 120, 6: 165, 7: 206, 8: 75,
+        9: 129, 10: 109, 11: 123, 12: 111, 13: 43, 14: 52, 15: 99, 16: 128,
+        17: 111, 18: 110, 19: 98, 20: 135, 21: 112, 22: 78, 23: 118, 24: 64,
+        25: 77, 26: 227, 27: 93, 28: 88, 29: 69, 30: 60, 31: 34, 32: 30,
+        33: 73, 34: 54, 35: 45, 36: 83, 37: 182, 38: 88, 39: 75, 40: 85,
+        41: 54, 42: 53, 43: 89, 44: 59, 45: 37, 46: 35, 47: 38, 48: 29,
+        49: 18, 50: 45, 51: 60, 52: 49, 53: 62, 54: 55, 55: 78, 56: 96,
+        57: 29, 58: 22, 59: 24, 60: 13, 61: 14, 62: 11, 63: 11, 64: 18,
+        65: 12, 66: 12, 67: 30, 68: 52, 69: 52, 70: 44, 71: 28, 72: 28,
+        73: 20, 74: 56, 75: 40, 76: 31, 77: 50, 78: 40, 79: 46, 80: 42,
+        81: 29, 82: 19, 83: 36, 84: 25, 85: 22, 86: 17, 87: 19, 88: 26,
+        89: 30, 90: 20, 91: 15, 92: 21, 93: 11, 94: 8, 95: 8, 96: 19,
+        97: 5, 98: 8, 99: 8, 100: 11, 101: 11, 102: 8, 103: 3, 104: 9,
+        105: 5, 106: 4, 107: 7, 108: 3, 109: 6, 110: 3, 111: 5, 112: 4,
+        113: 5, 114: 6,
       };
       
-      int completed = 0;
+      // Priority: Short surahs first (Juz Amma), then commonly read
+      final priorityOrder = [
+        // Short surahs first (quick progress)
+        112, 113, 114, 1, 108, 103, 110, 111, 109, 107, 105, 106, 104,
+        102, 101, 100, 99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88,
+        87, 86, 85, 84, 83, 82, 81, 80, 79, 78,
+        // Commonly read
+        36, 67, 55, 56, 18, 32, 48, 71, 72, 73, 74, 75, 76, 77,
+        // Rest
+        2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+        19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 33, 34, 35,
+        37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 49, 50, 51, 52, 53,
+        54, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 68, 69, 70,
+      ];
       
-      for (final surahId in prioritySurahs) {
+      int completed = state.tafseersDownloaded;
+      int totalSurahs = 114;
+      
+      for (int i = 0; i < priorityOrder.length && !_isPaused; i++) {
+        final surahId = priorityOrder[i];
+        
+        // Check if already downloaded
+        final isDownloaded = await _tafseerService!.isSurahDownloaded(surahId);
+        if (isDownloaded) {
+          completed++;
+          continue;
+        }
+        
         state = state.copyWith(
-          currentItem: 'Downloading Tafseer: Surah $surahId',
-          progress: 0.66 + (completed / prioritySurahs.length) * 0.34,
+          currentItem: 'Tafseer: Surah $surahId (${completed + 1}/$totalSurahs)',
+          progress: 0.4 + (completed / totalSurahs) * 0.6,
+          tafseersDownloaded: completed,
         );
         
         try {
           final verses = surahVerses[surahId] ?? 7;
-          await _tafseerService.downloadSurahTafseer(
-            surahId,
-            verses,
-          );
-          completed++;
+          final success = await _tafseerService!.downloadSurahTafseer(surahId, verses);
+          
+          if (success) {
+            completed++;
+            await _box?.put(_tafseerCountKey, completed.toString());
+            debugPrint('OfflineContentManager: Tafseer Surah $surahId downloaded');
+          } else {
+            debugPrint('OfflineContentManager: Tafseer Surah $surahId failed');
+          }
         } catch (e) {
-          debugPrint('Error downloading tafseer for surah $surahId: $e');
+          debugPrint('OfflineContentManager: Error downloading tafseer $surahId: $e');
         }
         
-        // Small delay to not overwhelm the API
-        await Future.delayed(const Duration(milliseconds: 500));
+        // Small delay to not overwhelm API
+        await Future.delayed(const Duration(milliseconds: 300));
       }
       
-      state = state.copyWith(tafseerComplete: true, progress: 1.0);
+      state = state.copyWith(
+        tafseerComplete: completed >= totalSurahs,
+        progress: 1.0,
+        tafseersDownloaded: completed,
+      );
       await _saveStatus();
+      debugPrint('OfflineContentManager: Tafseer download complete: $completed/$totalSurahs');
     } catch (e) {
-      debugPrint('Tafseer download error: $e');
+      debugPrint('OfflineContentManager: Tafseer download error: $e');
     }
   }
 
@@ -308,17 +453,17 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
       });
       await _box?.put(_statusKey, json);
     } catch (e) {
-      debugPrint('Error saving status: $e');
+      debugPrint('OfflineContentManager: Error saving status: $e');
     }
   }
 
   /// Get cached hadiths for offline use
-  Future<List<Hadith>> getCachedHadiths() async {
+  Future<List<Hadith>> getCachedHadiths({String? collectionId}) async {
     try {
       final cached = _box?.get(_hadithCacheKey);
       if (cached != null) {
         final list = jsonDecode(cached) as List<dynamic>;
-        return list.map((json) {
+        var hadiths = list.map((json) {
           final map = json as Map<String, dynamic>;
           return Hadith(
             hadithNumber: map['hadithNumber'] as int? ?? 0,
@@ -339,9 +484,15 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
                 : HadithGrade.unknown,
           );
         }).toList();
+        
+        if (collectionId != null) {
+          hadiths = hadiths.where((h) => h.collection == collectionId).toList();
+        }
+        
+        return hadiths;
       }
     } catch (e) {
-      debugPrint('Error getting cached hadiths: $e');
+      debugPrint('OfflineContentManager: Error getting cached hadiths: $e');
     }
     return [];
   }
@@ -358,21 +509,55 @@ class OfflineContentManager extends StateNotifier<DownloadStatus> {
         }).toList();
       }
     } catch (e) {
-      debugPrint('Error getting cached duas: $e');
+      debugPrint('OfflineContentManager: Error getting cached duas: $e');
     }
     return [];
   }
 
-  /// Clear all downloaded content
-  Future<void> clearAllDownloads() async {
-    await _box?.clear();
-    await _tafseerService.clearCache();
-    state = const DownloadStatus();
+  /// Force start download (manual trigger)
+  Future<void> forceStartDownload() async {
+    debugPrint('OfflineContentManager: Force starting download...');
+    _isPaused = false;
+    state = state.copyWith(error: null);
+    await startBackgroundDownload();
   }
 
-  /// Retry failed downloads
+  /// Clear all and re-download
+  Future<void> redownloadAll() async {
+    debugPrint('OfflineContentManager: Re-downloading all content...');
+    _isPaused = false;
+    
+    // Clear caches
+    await _box?.delete(_hadithCacheKey);
+    await _box?.delete(_duaCacheKey);
+    await _box?.delete(_hadithCountKey);
+    await _box?.delete(_tafseerCountKey);
+    await _box?.delete(_statusKey);
+    await _tafseerService?.clearCache();
+    
+    state = const DownloadStatus();
+    
+    // Start fresh
+    await startBackgroundDownload();
+  }
+
+  void pauseDownload() {
+    _isPaused = true;
+    state = state.copyWith(
+      isDownloading: false,
+      error: 'Download paused',
+    );
+  }
+
+  void resumeDownload() {
+    _isPaused = false;
+    state = state.copyWith(error: null);
+    _checkAndStartDownload();
+  }
+
   Future<void> retryDownload() async {
     state = state.copyWith(error: null);
+    _isPaused = false;
     await startBackgroundDownload();
   }
 

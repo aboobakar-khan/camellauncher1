@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tasbih_provider.dart';
+import '../providers/dhikr_history_provider.dart';
+import '../screens/dhikr_history_screen.dart';
 
 /// Tasbih Counter Widget - Ultra-minimalist design
 class TasbihCounterWidget extends ConsumerStatefulWidget {
@@ -44,11 +46,30 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
     
     ref.read(tasbihProvider.notifier).increment();
     
-    // Celebratory feedback on completion
+    // Celebratory feedback and record session on target completion
     if (!wasComplete && ref.read(tasbihProvider).currentCount >= state.targetCount) {
       HapticFeedback.heavyImpact();
       Future.delayed(const Duration(milliseconds: 100), () => HapticFeedback.mediumImpact());
+      
+      // Record the completed session
+      ref.read(dhikrHistoryProvider.notifier).recordSession(
+        dhikrIndex: state.selectedDhikrIndex,
+        count: state.targetCount,
+      );
+      
+      // Update longest streak
+      ref.read(dhikrHistoryProvider.notifier).updateLongestStreak(
+        ref.read(tasbihProvider).streakDays,
+      );
     }
+  }
+
+  void _openHistory() {
+    Navigator.of(context, rootNavigator: true).push(
+      MaterialPageRoute(
+        builder: (context) => const DhikrHistoryScreen(),
+      ),
+    );
   }
 
   void _showDhikrPicker() {
@@ -232,17 +253,73 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
           
           const SizedBox(height: 20),
           
-          // Reset action - centered
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.selectionClick();
-              ref.read(tasbihProvider.notifier).reset();
-            },
-            child: Icon(
-              Icons.refresh,
-              color: Colors.white.withValues(alpha: 0.2),
-              size: 20,
-            ),
+          // Action buttons - History and Reset
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // History button
+              GestureDetector(
+                onTap: _openHistory,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF40C463).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.bar_chart_rounded,
+                        color: const Color(0xFF40C463).withValues(alpha: 0.7),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'History',
+                        style: TextStyle(
+                          color: const Color(0xFF40C463).withValues(alpha: 0.8),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Reset button
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  ref.read(tasbihProvider.notifier).reset();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.refresh,
+                        color: Colors.white.withValues(alpha: 0.4),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Reset',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

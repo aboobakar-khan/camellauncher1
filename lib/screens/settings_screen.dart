@@ -24,6 +24,8 @@ import 'debug_apps_screen.dart';
 import 'premium_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'credits_screen.dart';
+import '../services/offline_content_manager.dart';
+import '../widgets/offline_download_indicator.dart';
 
 /// Settings Screen - Customization options
 class SettingsScreen extends ConsumerWidget {
@@ -270,6 +272,13 @@ class SettingsScreen extends ConsumerWidget {
                           _openHomeLauncherSettings(context);
                         },
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSettingsSection(
+                    title: 'CONTENT',
+                    items: [
+                      _buildOfflineContentItem(context, ref),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -707,6 +716,122 @@ class SettingsScreen extends ConsumerWidget {
                 color: Colors.white.withValues(alpha: 0.3),
                 size: 20,
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOfflineContentItem(BuildContext context, WidgetRef ref) {
+    final status = ref.watch(offlineContentProvider);
+    
+    IconData icon;
+    Color iconColor;
+    String subtitle;
+    
+    if (status.isComplete) {
+      icon = Icons.cloud_done;
+      iconColor = Colors.green;
+      subtitle = status.detailText;
+    } else if (status.isDownloading) {
+      icon = Icons.cloud_download;
+      iconColor = Colors.blue;
+      subtitle = '${(status.progress * 100).toInt()}% - ${status.currentItem ?? "Downloading..."}';
+    } else {
+      icon = Icons.cloud_off;
+      iconColor = Colors.orange;
+      subtitle = 'Tap to manage offline content';
+    }
+
+    return GestureDetector(
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: const Color(0xFF161B22),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (context) => const OfflineDownloadSheet(),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.1),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: status.isDownloading
+                  ? Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            value: status.progress,
+                            strokeWidth: 2.5,
+                            color: iconColor,
+                            backgroundColor: Colors.white.withValues(alpha: 0.1),
+                          ),
+                        ),
+                        Text(
+                          '${(status.progress * 100).toInt()}',
+                          style: TextStyle(
+                            color: iconColor,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Offline Content',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 15,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      fontSize: 12,
+                      letterSpacing: 0.5,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              color: Colors.white.withValues(alpha: 0.3),
+              size: 20,
+            ),
           ],
         ),
       ),

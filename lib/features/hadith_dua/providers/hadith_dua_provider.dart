@@ -7,7 +7,7 @@ import '../services/hadith_dua_service.dart';
 /// Service provider
 final hadithDuaServiceProvider = Provider((ref) => HadithDuaService());
 
-/// Provider for daily random hadith
+/// Provider for daily random hadith - with offline support
 final dailyHadithProvider = FutureProvider<Hadith?>((ref) async {
   final service = ref.read(hadithDuaServiceProvider);
   
@@ -31,9 +31,18 @@ final dailyHadithProvider = FutureProvider<Hadith?>((ref) async {
   
   if (hadith != null) {
     await box.put(cachedKey, jsonEncode(hadith.toJson()));
+    return hadith;
   }
   
-  return hadith;
+  // Fallback to offline cache
+  final offlineHadiths = await _getOfflineHadiths('bukhari');
+  if (offlineHadiths.isNotEmpty) {
+    // Get a random one based on the day
+    final index = DateTime.now().day % offlineHadiths.length;
+    return offlineHadiths[index];
+  }
+  
+  return null;
 });
 
 /// Provider for daily random dua
@@ -370,7 +379,7 @@ final selectedGradeFilterProvider = StateProvider<HadithGrade?>((ref) => null);
 /// Selected category filter
 final selectedCategoryFilterProvider = StateProvider<HadithCategory?>((ref) => null);
 
-/// Hadiths from selected collection
+/// Hadiths from selected collection - with offline fallback
 final collectionHadithsProvider = FutureProvider<List<Hadith>>((ref) async {
   final service = ref.read(hadithDuaServiceProvider);
   final collectionId = ref.watch(selectedCollectionProvider);
@@ -378,7 +387,14 @@ final collectionHadithsProvider = FutureProvider<List<Hadith>>((ref) async {
   final categoryFilter = ref.watch(selectedCategoryFilterProvider);
   
   final collection = HadithCollection.fromId(collectionId);
+  
+  // Try online fetch first
   var hadiths = await service.fetchHadiths(collection);
+  
+  // If empty, try offline cache
+  if (hadiths.isEmpty) {
+    hadiths = await _getOfflineHadiths(collectionId);
+  }
   
   // Apply filters
   if (gradeFilter != null) {
@@ -390,6 +406,52 @@ final collectionHadithsProvider = FutureProvider<List<Hadith>>((ref) async {
   
   return hadiths;
 });
+
+/// Get hadiths from offline cache
+Future<List<Hadith>> _getOfflineHadiths(String? collectionId) async {
+  try {
+    final box = await Hive.openBox<String>('offline_content_v2');
+    final cached = box.get('hadith_cache');
+    if (cached != null) {
+      final list = jsonDecode(cached) as List<dynamic>;
+      var hadiths = list.map((json) {
+        final map = json as Map<String, dynamic>;
+        return Hadith(
+          hadithNumber: map['hadithNumber'] as int? ?? 0,
+          arabicNumber: map['arabicNumber'] as int? ?? 0,
+          text: map['text'] as String? ?? '',
+          arabicText: map['arabicText'] as String?,
+          narrator: map['narrator'] as String?,
+          collection: map['collection'] as String? ?? 'Unknown',
+          book: map['book'] as int? ?? 0,
+          hadithInBook: map['hadithInBook'] as int? ?? 0,
+          section: map['section'] as String?,
+          chapterName: map['chapterName'] as String?,
+          grade: map['grade'] != null 
+              ? HadithGrade.values.firstWhere(
+                  (g) => g.name == map['grade'],
+                  orElse: () => HadithGrade.sahih,
+                )
+              : HadithGrade.sahih,
+        );
+      }).toList();
+      
+      // Filter by collection if specified
+      if (collectionId != null) {
+        final collectionLower = collectionId.toLowerCase();
+        hadiths = hadiths.where((h) => 
+          h.collection.toLowerCase().contains(collectionLower) ||
+          collectionLower.contains(h.collection.toLowerCase())
+        ).toList();
+      }
+      
+      return hadiths;
+    }
+  } catch (e) {
+    // Return empty on error
+  }
+  return [];
+}
 
 /// Refresh trigger for daily content
 final refreshTriggerProvider = StateProvider<int>((ref) => 0);

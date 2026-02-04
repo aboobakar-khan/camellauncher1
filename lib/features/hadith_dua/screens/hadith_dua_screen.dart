@@ -49,18 +49,20 @@ class _HadithDuaScreenState extends ConsumerState<HadithDuaScreen>
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Column(
-        children: [
-          // Search bar
-          _buildSearchBar(searchState),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Search bar
+            _buildSearchBar(searchState),
 
-          // Content
-          Expanded(
-            child: searchState.isSearching
-                ? _buildSearchResults(searchState)
-                : _buildMainContent(),
-          ),
-        ],
+            // Content
+            Expanded(
+              child: searchState.isSearching
+                  ? _buildSearchResults(searchState)
+                  : _buildMainContent(),
+            ),
+          ],
+        ),
       ),
     );
   }

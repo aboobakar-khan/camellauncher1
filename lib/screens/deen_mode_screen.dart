@@ -8,6 +8,7 @@ import '../providers/deen_mode_provider.dart';
 import '../providers/tasbih_provider.dart';
 import '../features/quran/screens/surah_list_screen.dart';
 import '../features/hadith_dua/screens/hadith_dua_screen.dart';
+import 'minimalist_duas_screen.dart';
 
 /// Deen Mode Screen - Spiritual Focus Mode
 /// Hard to exit: 10-second hold with breathing exercise
@@ -110,7 +111,7 @@ class _DeenModeScreenState extends ConsumerState<DeenModeScreen> {
     Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute(
         fullscreenDialog: true,
-        builder: (context) => const HadithDuaScreen(),
+        builder: (context) => const MinimalistDuasScreen(),
       ),
     );
   }

@@ -21,38 +21,62 @@ class PrayerTrackerWidget extends ConsumerWidget {
     final todayRecord = ref.watch(todayPrayerRecordProvider);
     final recordsMap = ref.watch(prayerRecordsMapProvider);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.1),
-          width: 1,
+    return GestureDetector(
+      onTap: onExpand,
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.1),
+            width: 1,
+          ),
         ),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Today's prayers with icons
-          _buildTodayPrayers(ref, todayRecord),
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header with expand hint
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Prayer Tracker',
+                  style: TextStyle(
+                    color: _greenLight,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Icon(
+                  Icons.open_in_full,
+                  color: Colors.white.withValues(alpha: 0.3),
+                  size: 14,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            // Today's prayers with icons
+            _buildTodayPrayers(ref, todayRecord),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          // Month header
-          _buildMonthHeader(),
+            // Month header
+            _buildMonthHeader(),
 
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
 
-          // Current month grid
-          _buildCurrentMonthGrid(recordsMap),
+            // Current month grid
+            _buildCurrentMonthGrid(recordsMap),
 
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
 
-          // Legend
-          _buildLegend(),
-        ],
+            // Legend
+            _buildLegend(),
+          ],
+        ),
       ),
     );
   }

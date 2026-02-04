@@ -7,9 +7,10 @@ import '../widgets/pomodoro_widget.dart';
 import '../widgets/focus_mode_widget.dart';
 import '../widgets/deen_mode_widget.dart';
 import '../widgets/event_tracker_widget.dart';
-import '../widgets/prayer_tracker_widget.dart';
 import '../widgets/tasbih_counter_widget.dart';
+import '../widgets/prayer_tracker_widget.dart';
 import 'todo_list_screen.dart';
+import 'prayer_tracker_screen.dart';
 import 'premium_screen.dart';
 import '../features/quran/providers/quran_provider.dart';
 import '../features/quran/widgets/tafseer_bottom_sheet.dart';
@@ -194,7 +195,15 @@ class WidgetDashboardScreen extends ConsumerWidget {
                   ),
 
                   // Prayer Tracker Widget - 5 times daily prayer tracking
-                  const PrayerTrackerWidget(),
+                  PrayerTrackerWidget(
+                    onExpand: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const PrayerTrackerScreen(),
+                        ),
+                      );
+                    },
+                  ),
 
                   const SizedBox(height: 16),
 
