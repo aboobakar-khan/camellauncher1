@@ -95,8 +95,8 @@ class _TasbihCounterWidgetState extends ConsumerState<TasbihCounterWidget>
         color: Colors.black.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 1,
+          color: const Color(0xFF40C463).withValues(alpha: 0.35),
+          width: 1.5,
         ),
       ),
       child: Column(

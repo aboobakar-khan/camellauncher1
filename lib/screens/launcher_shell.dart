@@ -137,7 +137,7 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
     // Smooth animation to target
     _pageController.animateToPage(
       targetPage,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 450),
       curve: Curves.easeOutCubic,
     );
     
@@ -160,29 +160,54 @@ class _LauncherShellState extends ConsumerState<LauncherShell>
             // Background
             _buildBackground(wallpaper),
 
-            // Edge gesture blockers - consume swipes at screen edges
+            // LEFT edge - swipe right to go to previous page
             Positioned(
               left: 0,
               top: 0,
               bottom: 0,
-              width: 20,
+              width: 40,
               child: GestureDetector(
-                onHorizontalDragStart: (_) {},
-                onHorizontalDragUpdate: (_) {},
-                onHorizontalDragEnd: (_) {},
-                behavior: HitTestBehavior.translucent,
+                onHorizontalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity > 200) {
+                    // Swipe right - go to previous page
+                    final currentPage = (_pageController.page ?? _homeIndex).round();
+                    if (currentPage > 0) {
+                      _pageController.animateToPage(
+                        currentPage - 1,
+                        duration: const Duration(milliseconds: 450),
+                        curve: Curves.easeOutCubic,
+                      );
+                    }
+                  }
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Container(color: Colors.transparent),
               ),
             ),
+            // RIGHT edge - swipe left to go to next page
             Positioned(
               right: 0,
               top: 0,
               bottom: 0,
-              width: 20,
+              width: 40,
               child: GestureDetector(
-                onHorizontalDragStart: (_) {},
-                onHorizontalDragUpdate: (_) {},
-                onHorizontalDragEnd: (_) {},
-                behavior: HitTestBehavior.translucent,
+                onHorizontalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity < -200) {
+                    // Swipe left - go to next page
+                    final currentPage = (_pageController.page ?? _homeIndex).round();
+                    if (currentPage < 3) {
+                      _pageController.animateToPage(
+                        currentPage + 1,
+                        duration: const Duration(milliseconds: 450),
+                        curve: Curves.easeOutCubic,
+                      );
+                    }
+                  }
+                },
+                behavior: HitTestBehavior.opaque,
+                child: Container(color: Colors.transparent),
               ),
             ),
 

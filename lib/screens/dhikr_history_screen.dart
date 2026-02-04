@@ -3,8 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tasbih_provider.dart';
 
-/// Simple Dhikr History Screen - Single unified view
-/// Shows data directly from TasbihState (existing tracking)
+/// Dhikr Dashboard - Complete history with date/month wise data
 class DhikrHistoryScreen extends ConsumerWidget {
   const DhikrHistoryScreen({super.key});
 
@@ -20,42 +19,46 @@ class DhikrHistoryScreen extends ConsumerWidget {
             // Header
             _buildHeader(context),
             
-            // Main content
+            // Content
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Streak card
-                    _StreakCard(
-                      streakDays: tasbihState.streakDays,
-                      totalAllTime: tasbihState.totalAllTime,
-                    ),
+                    // Stats Overview
+                    _StatsOverview(state: tasbihState),
                     
                     const SizedBox(height: 24),
                     
-                    // Quick stats row
-                    _QuickStats(
-                      todayCount: tasbihState.todayCount,
-                      monthlyTotal: tasbihState.monthlyTotal,
-                      completedTargets: tasbihState.completedTargets,
-                    ),
+                    // Date-wise Section
+                    _SectionTitle(title: 'This Week'),
+                    const SizedBox(height: 12),
+                    _DateWiseStats(state: tasbihState),
                     
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
                     
-                    // Dhikr types breakdown
-                    _buildSectionTitle('Dhikr Breakdown'),
+                    // Month-wise Section
+                    _SectionTitle(title: 'Monthly Progress'),
+                    const SizedBox(height: 12),
+                    _MonthWiseStats(state: tasbihState),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Dhikr Breakdown
+                    _SectionTitle(title: 'Dhikr Breakdown'),
                     const SizedBox(height: 12),
                     _DhikrBreakdown(dhikrCounts: tasbihState.dhikrCounts),
                     
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
                     
-                    // Achievements
-                    _buildSectionTitle('Achievements'),
+                    // Achievements - Horizontal scroll
+                    _SectionTitle(title: 'Achievements'),
                     const SizedBox(height: 12),
-                    _AchievementsList(
+                    _AchievementsRow(
                       unlockedAchievements: tasbihState.unlockedAchievements,
+                      totalAllTime: tasbihState.totalAllTime,
+                      streakDays: tasbihState.streakDays,
                     ),
                     
                     const SizedBox(height: 40),
@@ -91,7 +94,7 @@ class DhikrHistoryScreen extends ConsumerWidget {
           ),
           const SizedBox(width: 16),
           Text(
-            'Dhikr History',
+            'Dhikr Dashboard',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.9),
               fontSize: 20,
@@ -102,13 +105,19 @@ class DhikrHistoryScreen extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Widget _buildSectionTitle(String title) {
+class _SectionTitle extends StatelessWidget {
+  final String title;
+  const _SectionTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
     return Text(
       title,
       style: TextStyle(
-        color: Colors.white.withValues(alpha: 0.6),
-        fontSize: 14,
+        color: Colors.white.withValues(alpha: 0.5),
+        fontSize: 13,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.5,
       ),
@@ -116,25 +125,20 @@ class DhikrHistoryScreen extends ConsumerWidget {
   }
 }
 
-/// Streak highlight card
-class _StreakCard extends StatelessWidget {
-  final int streakDays;
-  final int totalAllTime;
-
-  const _StreakCard({
-    required this.streakDays,
-    required this.totalAllTime,
-  });
+/// Stats Overview Card
+class _StatsOverview extends StatelessWidget {
+  final TasbihState state;
+  const _StatsOverview({required this.state});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF40C463).withValues(alpha: 0.15),
-            const Color(0xFF40C463).withValues(alpha: 0.05),
+            const Color(0xFF40C463).withValues(alpha: 0.12),
+            const Color(0xFF40C463).withValues(alpha: 0.04),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -143,58 +147,44 @@ class _StreakCard extends StatelessWidget {
       child: Row(
         children: [
           // Streak
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Text('🔥', style: TextStyle(fontSize: 28)),
-                  const SizedBox(width: 10),
-                  Text(
-                    '$streakDays',
-                    style: const TextStyle(
-                      color: Color(0xFF40C463),
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                streakDays == 1 ? 'Day Streak' : 'Days Streak',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  fontSize: 13,
-                ),
-              ),
-            ],
+          Expanded(
+            child: _OverviewStat(
+              icon: '🔥',
+              value: '${state.streakDays}',
+              label: 'Streak',
+              highlight: state.streakDays > 0,
+            ),
           ),
-          const Spacer(),
-          // Total all time
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                _formatNumber(totalAllTime),
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.9),
-                  fontSize: 28,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Total Dhikr',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.4),
-                  fontSize: 12,
-                ),
-              ),
-            ],
+          _verticalDivider(),
+          // Total
+          Expanded(
+            child: _OverviewStat(
+              icon: '📿',
+              value: _formatNumber(state.totalAllTime),
+              label: 'Total',
+              highlight: false,
+            ),
+          ),
+          _verticalDivider(),
+          // Today
+          Expanded(
+            child: _OverviewStat(
+              icon: '📅',
+              value: '${state.todayCount}',
+              label: 'Today',
+              highlight: state.todayCount > 0,
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _verticalDivider() {
+    return Container(
+      width: 1,
+      height: 40,
+      color: Colors.white.withValues(alpha: 0.08),
     );
   }
 
@@ -205,43 +195,39 @@ class _StreakCard extends StatelessWidget {
   }
 }
 
-/// Quick stats row
-class _QuickStats extends StatelessWidget {
-  final int todayCount;
-  final int monthlyTotal;
-  final int completedTargets;
+class _OverviewStat extends StatelessWidget {
+  final String icon;
+  final String value;
+  final String label;
+  final bool highlight;
 
-  const _QuickStats({
-    required this.todayCount,
-    required this.monthlyTotal,
-    required this.completedTargets,
+  const _OverviewStat({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.highlight,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _StatBox(
-            icon: '📅',
-            value: '$todayCount',
-            label: 'Today',
+        Text(icon, style: const TextStyle(fontSize: 20)),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            color: highlight ? const Color(0xFF40C463) : Colors.white.withValues(alpha: 0.85),
+            fontSize: 22,
+            fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatBox(
-            icon: '📆',
-            value: '$monthlyTotal',
-            label: 'This Month',
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatBox(
-            icon: '✅',
-            value: '$completedTargets',
-            label: 'Completed',
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.4),
+            fontSize: 11,
           ),
         ),
       ],
@@ -249,45 +235,160 @@ class _QuickStats extends StatelessWidget {
   }
 }
 
-class _StatBox extends StatelessWidget {
-  final String icon;
-  final String value;
-  final String label;
-
-  const _StatBox({
-    required this.icon,
-    required this.value,
-    required this.label,
-  });
+/// Date-wise stats - Last 7 days
+class _DateWiseStats extends StatelessWidget {
+  final TasbihState state;
+  const _DateWiseStats({required this.state});
 
   @override
   Widget build(BuildContext context) {
+    final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final now = DateTime.now();
+    
+    // Generate last 7 days data
+    final days = List.generate(7, (i) {
+      final day = now.subtract(Duration(days: 6 - i));
+      return {
+        'day': weekdays[day.weekday - 1],
+        'date': day.day,
+        'isToday': i == 6,
+        // For now, show today's count only on today, otherwise 0
+        'count': i == 6 ? state.todayCount : 0,
+      };
+    });
+    
+    final maxCount = state.todayCount > 0 ? state.todayCount : 1;
+
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        color: Colors.white.withValues(alpha: 0.025),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: days.map((day) {
+          final count = day['count'] as int;
+          final isToday = day['isToday'] as bool;
+          final barHeight = count > 0 ? (count / maxCount * 50).clamp(8.0, 50.0) : 4.0;
+          
+          return Column(
+            children: [
+              // Bar
+              Container(
+                width: 24,
+                height: 50,
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  width: 24,
+                  height: barHeight,
+                  decoration: BoxDecoration(
+                    color: isToday 
+                        ? const Color(0xFF40C463)
+                        : count > 0 
+                            ? const Color(0xFF40C463).withValues(alpha: 0.4)
+                            : Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Count
+              Text(
+                count > 0 ? '$count' : '-',
+                style: TextStyle(
+                  color: isToday 
+                      ? const Color(0xFF40C463)
+                      : Colors.white.withValues(alpha: 0.4),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              // Day name
+              Text(
+                day['day'] as String,
+                style: TextStyle(
+                  color: isToday 
+                      ? Colors.white.withValues(alpha: 0.8)
+                      : Colors.white.withValues(alpha: 0.3),
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+/// Month-wise stats
+class _MonthWiseStats extends StatelessWidget {
+  final TasbihState state;
+  const _MonthWiseStats({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final currentMonth = DateTime.now().month - 1;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.025),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
       ),
       child: Column(
         children: [
-          Text(icon, style: const TextStyle(fontSize: 18)),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.85),
-              fontSize: 20,
-              fontWeight: FontWeight.w600,
-            ),
+          Row(
+            children: [
+              Text(
+                months[currentMonth],
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${DateTime.now().year}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  fontSize: 14,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${state.monthlyTotal}',
+                style: const TextStyle(
+                  color: Color(0xFF40C463),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                ' dhikr',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 12,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.4),
-              fontSize: 10,
-            ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _MonthStat(label: 'Daily Avg', value: '${(state.monthlyTotal / DateTime.now().day).round()}'),
+              const SizedBox(width: 20),
+              _MonthStat(label: 'Completed', value: '${state.completedTargets}'),
+              const SizedBox(width: 20),
+              _MonthStat(label: 'Best Day', value: '${state.todayCount}'),
+            ],
           ),
         ],
       ),
@@ -295,122 +396,128 @@ class _StatBox extends StatelessWidget {
   }
 }
 
-/// Dhikr breakdown - shows count per dhikr type
+class _MonthStat extends StatelessWidget {
+  final String label;
+  final String value;
+  const _MonthStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.3),
+            fontSize: 10,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dhikr breakdown
 class _DhikrBreakdown extends StatelessWidget {
   final Map<int, int> dhikrCounts;
-
   const _DhikrBreakdown({required this.dhikrCounts});
 
   @override
   Widget build(BuildContext context) {
     if (dhikrCounts.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
-          borderRadius: BorderRadius.circular(12),
+          color: Colors.white.withValues(alpha: 0.025),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Center(
-          child: Column(
-            children: [
-              const Text('📿', style: TextStyle(fontSize: 32)),
-              const SizedBox(height: 12),
-              Text(
-                'No dhikr recorded yet',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.4),
-                  fontSize: 13,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Start counting to see your breakdown',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.25),
-                  fontSize: 11,
-                ),
-              ),
-            ],
+          child: Text(
+            'Start counting to see breakdown',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.3),
+              fontSize: 13,
+            ),
           ),
         ),
       );
     }
 
-    // Sort by count (highest first)
     final sorted = dhikrCounts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final maxCount = sorted.first.value;
 
     return Column(
-      children: sorted.map((entry) {
+      children: sorted.take(5).map((entry) {
         final dhikr = Dhikr.presets[entry.key];
         final percentage = maxCount > 0 ? entry.value / maxCount : 0.0;
 
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.025),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      dhikr.arabic,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.8),
-                        fontSize: 16,
-                      ),
-                      textDirection: TextDirection.rtl,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+              // Arabic
+              Expanded(
+                flex: 2,
+                child: Text(
+                  dhikr.arabic,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.75),
+                    fontSize: 15,
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    '${entry.value}',
-                    style: const TextStyle(
-                      color: Color(0xFF40C463),
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
+                  textDirection: TextDirection.rtl,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(width: 12),
               // Progress bar
-              Stack(
-                children: [
-                  Container(
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  FractionallySizedBox(
-                    widthFactor: percentage.clamp(0.0, 1.0),
-                    child: Container(
-                      height: 4,
+              Expanded(
+                flex: 3,
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 6,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF40C463),
-                        borderRadius: BorderRadius.circular(2),
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(3),
                       ),
                     ),
-                  ),
-                ],
+                    FractionallySizedBox(
+                      widthFactor: percentage.clamp(0.0, 1.0),
+                      child: Container(
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF40C463),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(width: 12),
+              // Count
               Text(
-                dhikr.transliteration,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.35),
-                  fontSize: 11,
+                '${entry.value}',
+                style: const TextStyle(
+                  color: Color(0xFF40C463),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -421,77 +528,190 @@ class _DhikrBreakdown extends StatelessWidget {
   }
 }
 
-/// Achievements list
-class _AchievementsList extends StatelessWidget {
+/// Achievements - Horizontal scrollable row
+class _AchievementsRow extends StatelessWidget {
   final List<String> unlockedAchievements;
-
-  const _AchievementsList({required this.unlockedAchievements});
+  final int totalAllTime;
+  final int streakDays;
+  
+  const _AchievementsRow({
+    required this.unlockedAchievements,
+    required this.totalAllTime,
+    required this.streakDays,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: DhikrAchievement.values.map((achievement) {
-        final isUnlocked = unlockedAchievements.contains(achievement.name);
-        
-        return GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  '${achievement.emoji} ${achievement.name}: ${achievement.description}',
-                ),
-                backgroundColor: isUnlocked 
-                    ? const Color(0xFF40C463).withValues(alpha: 0.9) 
-                    : Colors.grey.withValues(alpha: 0.9),
-                duration: const Duration(seconds: 2),
-              ),
-            );
-          },
-          child: Container(
-            width: 70,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            decoration: BoxDecoration(
-              color: isUnlocked 
-                  ? const Color(0xFF40C463).withValues(alpha: 0.12)
-                  : Colors.white.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
+    final achievements = DhikrAchievement.values;
+    
+    // Find next locked achievement
+    int? nextTargetIndex;
+    for (int i = 0; i < achievements.length; i++) {
+      if (!unlockedAchievements.contains(achievements[i].name)) {
+        nextTargetIndex = i;
+        break;
+      }
+    }
+
+    return SizedBox(
+      height: 90,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: achievements.length,
+        itemBuilder: (context, index) {
+          final achievement = achievements[index];
+          final isUnlocked = unlockedAchievements.contains(achievement.name);
+          final isNextTarget = index == nextTargetIndex;
+          
+          return GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              _showAchievementInfo(context, achievement, isUnlocked, isNextTarget);
+            },
+            child: Container(
+              width: 75,
+              margin: EdgeInsets.only(right: index < achievements.length - 1 ? 10 : 0),
+              decoration: BoxDecoration(
                 color: isUnlocked 
-                    ? const Color(0xFF40C463).withValues(alpha: 0.25)
-                    : Colors.white.withValues(alpha: 0.05),
+                    ? const Color(0xFF40C463).withValues(alpha: 0.12)
+                    : isNextTarget
+                        ? Colors.amber.withValues(alpha: 0.08)
+                        : Colors.white.withValues(alpha: 0.02),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isUnlocked 
+                      ? const Color(0xFF40C463).withValues(alpha: 0.3)
+                      : isNextTarget
+                          ? Colors.amber.withValues(alpha: 0.25)
+                          : Colors.white.withValues(alpha: 0.04),
+                  width: isNextTarget ? 1.5 : 1,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Icon/Emoji
+                  Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Text(
+                        achievement.emoji,
+                        style: TextStyle(
+                          fontSize: 28,
+                          color: isUnlocked ? null : Colors.grey.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      if (!isUnlocked && !isNextTarget)
+                        Icon(
+                          Icons.lock,
+                          size: 14,
+                          color: Colors.white.withValues(alpha: 0.2),
+                        ),
+                      if (isNextTarget)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          child: Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: Colors.amber,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  // Status label
+                  Text(
+                    isUnlocked 
+                        ? '✓' 
+                        : isNextTarget 
+                            ? 'Next'
+                            : '🔒',
+                    style: TextStyle(
+                      color: isUnlocked 
+                          ? const Color(0xFF40C463)
+                          : isNextTarget
+                              ? Colors.amber
+                              : Colors.white.withValues(alpha: 0.2),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: Column(
-              children: [
-                Text(
-                  achievement.emoji,
-                  style: TextStyle(
-                    fontSize: 26,
-                    color: isUnlocked ? null : Colors.grey.withValues(alpha: 0.5),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  achievement.name.split(' ').first,
-                  style: TextStyle(
-                    color: isUnlocked 
-                        ? const Color(0xFF40C463)
-                        : Colors.white.withValues(alpha: 0.25),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _showAchievementInfo(BuildContext context, DhikrAchievement achievement, bool isUnlocked, bool isNextTarget) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(achievement.emoji, style: const TextStyle(fontSize: 48)),
+            const SizedBox(height: 12),
+            Text(
+              achievement.name,
+              style: TextStyle(
+                color: isUnlocked ? const Color(0xFF40C463) : Colors.white.withValues(alpha: 0.8),
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-        );
-      }).toList(),
+            const SizedBox(height: 8),
+            Text(
+              achievement.description,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isUnlocked 
+                    ? const Color(0xFF40C463).withValues(alpha: 0.15)
+                    : isNextTarget
+                        ? Colors.amber.withValues(alpha: 0.15)
+                        : Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                isUnlocked 
+                    ? '✓ Unlocked!' 
+                    : isNextTarget
+                        ? '🎯 Your Next Goal'
+                        : '🔒 Locked',
+                style: TextStyle(
+                  color: isUnlocked 
+                      ? const Color(0xFF40C463)
+                      : isNextTarget
+                          ? Colors.amber
+                          : Colors.white.withValues(alpha: 0.5),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -9,6 +9,7 @@ import '../providers/app_interrupt_provider.dart';
 import '../providers/focus_mode_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/hidden_apps_provider.dart';
+import '../providers/recent_apps_provider.dart';
 import '../services/app_settings_service.dart';
 import '../widgets/app_interrupt_dialog.dart';
 import 'settings_screen.dart';
@@ -126,6 +127,9 @@ class _AppListScreenState extends ConsumerState<AppListScreen>
         return;
       }
     }
+
+    // Track as recent app
+    ref.read(recentAppsProvider.notifier).addRecent(packageName);
 
     // Launch the app
     try {

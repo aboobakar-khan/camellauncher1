@@ -7,6 +7,7 @@ import '../models/installed_app.dart';
 import '../providers/installed_apps_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/favorite_apps_provider.dart';
+import '../providers/recent_apps_provider.dart';
 import '../providers/app_interrupt_provider.dart';
 import '../providers/focus_mode_provider.dart';
 import '../widgets/app_interrupt_dialog.dart';
@@ -126,6 +127,9 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
       if (shouldProceed != true) return;
     }
 
+    // Track as recent app
+    ref.read(recentAppsProvider.notifier).addRecent(app.packageName);
+
     // Dismiss and launch
     widget.onDismiss();
     try {
@@ -170,19 +174,21 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
     // Get apps directly from memory - INSTANT!
     final installedAppsNotifier = ref.watch(installedAppsProvider.notifier);
     final allApps = ref.watch(installedAppsProvider);
-    final favorites = ref.watch(favoriteAppsProvider);
+    final recentPackages = ref.watch(recentAppsProvider);
     
     // Filter apps instantly from memory
     final filteredApps = _searchQuery.isEmpty 
         ? <InstalledApp>[]
         : installedAppsNotifier.filterApps(_searchQuery).take(8).toList();
     
-    // Get suggested apps (favorites)
-    final favoritePackages = favorites.map((f) => f.packageName).toSet();
-    final suggestedApps = allApps
-        .where((app) => favoritePackages.contains(app.packageName))
-        .take(6)
-        .toList();
+    // Get recent apps (most recently launched)
+    final recentApps = <InstalledApp>[];
+    for (final packageName in recentPackages) {
+      final app = allApps.where((a) => a.packageName == packageName).firstOrNull;
+      if (app != null && recentApps.length < 6) {
+        recentApps.add(app);
+      }
+    }
     
     return AnimatedBuilder(
       animation: _controller,
@@ -194,6 +200,13 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
               onTap: _dismiss,
               onVerticalDragEnd: (details) {
                 if (details.primaryVelocity != null && details.primaryVelocity! < -500) {
+                  _dismiss();
+                }
+              },
+              onHorizontalDragEnd: (details) {
+                // Swipe left or right to dismiss
+                final velocity = details.primaryVelocity ?? 0;
+                if (velocity.abs() > 300) {
                   _dismiss();
                 }
               },
@@ -274,11 +287,11 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
                                 
                                 const SizedBox(height: 20),
                                 
-                                // Results or suggestions (INSTANT!)
+                                // Results or recent apps (INSTANT!)
                                 if (_searchQuery.isNotEmpty)
                                   _buildSearchResults(filteredApps, themeColor)
                                 else
-                                  _buildSuggestedApps(suggestedApps, themeColor),
+                                  _buildRecentApps(recentApps, themeColor),
                               ],
                             ),
                           ),
@@ -344,7 +357,7 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
     );
   }
 
-  Widget _buildSuggestedApps(List<InstalledApp> apps, AppThemeColor themeColor) {
+  Widget _buildRecentApps(List<InstalledApp> apps, AppThemeColor themeColor) {
     if (apps.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -363,7 +376,7 @@ class _QuickSearchOverlayState extends ConsumerState<QuickSearchOverlay>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'FAVORITES',
+          'RECENT',
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.3),
             fontSize: 10,
