@@ -11,7 +11,7 @@ import '../widgets/tasbih_counter_widget.dart';
 import '../widgets/prayer_tracker_widget.dart';
 import 'todo_list_screen.dart';
 import 'prayer_tracker_screen.dart';
-import 'premium_screen.dart';
+import 'premium_paywall_screen.dart';
 import '../features/quran/providers/quran_provider.dart';
 import '../features/quran/widgets/tafseer_bottom_sheet.dart';
 import '../providers/arabic_font_provider.dart';
@@ -269,7 +269,7 @@ class WidgetDashboardScreen extends ConsumerWidget {
                   // App Usage, Habits, etc.
 
                   // Premium card (only show if not premium)
-                  if (!isPremium) _buildPremiumCard(context, currentTheme),
+                  if (!isPremium.isPremium) _buildPremiumCard(context, currentTheme),
 
                   const SizedBox(height: 20),
                 ],
@@ -282,67 +282,141 @@ class WidgetDashboardScreen extends ConsumerWidget {
   }
 
   Widget _buildPremiumCard(BuildContext context, AppThemeColor currentTheme) {
+    const greenAccent = Color(0xFF40C463);
+    
     return GestureDetector(
       onTap: () {
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (context) => const PremiumScreen()));
+        // Open new psychology-optimized paywall
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            opaque: false,
+            pageBuilder: (context, _, __) => const PremiumPaywallScreen(),
+            transitionsBuilder: (context, anim, _, child) {
+              return FadeTransition(opacity: anim, child: child);
+            },
+          ),
+        );
       },
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              currentTheme.color.withValues(alpha: 0.2),
-              currentTheme.color.withValues(alpha: 0.05),
+              greenAccent.withValues(alpha: 0.15),
+              greenAccent.withValues(alpha: 0.05),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: currentTheme.color.withValues(alpha: 0.4),
+            color: greenAccent.withValues(alpha: 0.4),
             width: 1.5,
           ),
         ),
         child: Column(
           children: [
-            Icon(Icons.star_rounded, color: Colors.amber, size: 48),
-            const SizedBox(height: 12),
-            Text(
-              'UNLOCK PREMIUM',
-              style: TextStyle(
-                color: currentTheme.color,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 2,
+            // Premium icon with glow
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF40C463), Color(0xFF30A14E)],
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: greenAccent.withValues(alpha: 0.4),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Get access to all premium features',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.6),
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
+              child: const Icon(
+                Icons.workspace_premium,
+                color: Colors.white,
+                size: 28,
               ),
             ),
             const SizedBox(height: 16),
+            
+            // Title with badge
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text(
+                  'Go Premium',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    '75% OFF',
+                    style: TextStyle(
+                      color: Colors.amber,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            
+            Text(
+              'Unlock Deen Mode, all themes & more',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 6),
+            
+            // Social proof
+            Text(
+              '⭐ 10K+ Muslims already upgraded',
+              style: TextStyle(
+                color: greenAccent.withValues(alpha: 0.7),
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 16),
+            
+            // CTA Button
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.amber,
-                borderRadius: BorderRadius.circular(8),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF40C463), Color(0xFF30A14E)],
+                ),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: greenAccent.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: const Text(
                 'VIEW PLANS',
                 style: TextStyle(
-                  color: Colors.black,
+                  color: Colors.white,
                   fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.5,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1,
                 ),
               ),
             ),

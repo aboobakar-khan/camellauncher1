@@ -37,6 +37,7 @@ class _CalendarWidgetState extends ConsumerState<CalendarWidget> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       onTap: widget.onExpand,
       child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
         child: Column(
           children: [
             TableCalendar(

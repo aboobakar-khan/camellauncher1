@@ -9,6 +9,11 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     
+    <!-- Screen Time Analytics - Usage Stats Permission -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        android:tools="ignore"
+        xmlns:tools="http://schemas.android.com/tools" />
+    
     <application
         android:label="minimalist_app"
         android:name="${applicationName}"

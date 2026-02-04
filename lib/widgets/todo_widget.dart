@@ -56,6 +56,7 @@ class _TodoWidgetState extends ConsumerState<TodoWidget> {
                     icon: Icons.check_circle_outline,
                   )
                 : ListView.builder(
+                    physics: const NeverScrollableScrollPhysics(),
                     padding: EdgeInsets.zero,
                     itemCount: activeTodos.length,
                     itemBuilder: (context, index) {

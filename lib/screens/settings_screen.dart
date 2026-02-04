@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../providers/theme_provider.dart';
 import '../providers/font_provider.dart';
 import '../providers/font_size_provider.dart';
@@ -21,7 +22,7 @@ import 'app_interrupt_settings_screen.dart';
 import 'focus_mode_settings_screen.dart';
 import 'hidden_apps_screen.dart';
 import 'debug_apps_screen.dart';
-import 'premium_screen.dart';
+import 'premium_paywall_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'credits_screen.dart';
 import '../services/offline_content_manager.dart';
@@ -63,7 +64,7 @@ class SettingsScreen extends ConsumerWidget {
                 padding: const EdgeInsets.all(20),
                 children: [
                   // Premium banner (only show if not premium)
-                  if (!isPremium) ...[
+                  if (!isPremium.isPremium) ...[
                     _buildPremiumBanner(
                       context,
                       AppThemeColor(
@@ -285,40 +286,122 @@ class SettingsScreen extends ConsumerWidget {
                   _buildSettingsSection(
                     title: 'PREMIUM',
                     items: [
-                      GestureDetector(
+                      // Main premium tile - opens paywall
+                      _buildSettingsItem(
+                        icon: isPremium.isPremium ? Icons.workspace_premium : Icons.stars,
+                        title: isPremium.isPremium
+                            ? 'Premium Active ✓'
+                            : 'Unlock Pro Version',
+                        subtitle: isPremium.isPremium
+                            ? 'All features unlocked'
+                            : 'Get access to all premium features',
                         onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const PremiumScreen(),
-                            ),
-                          );
+                          showPremiumPaywall(context);
                         },
-                        onLongPress: isPremium
-                            ? () async {
-                                // Long press to reset premium (for testing)
-                                await ref
-                                    .read(premiumProvider.notifier)
-                                    .clearPremiumData();
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Premium status cleared'),
-                                      duration: Duration(seconds: 1),
-                                    ),
+                      ),
+                      
+                      // Testing controls (remove in production)
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            // Buy Premium Button
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () async {
+                                  await ref.read(premiumProvider.notifier).activatePremium(
+                                    type: 'lifetime',
                                   );
-                                }
-                              }
-                            : null,
-                        child: _buildSettingsItem(
-                          icon: Icons.star,
-
-                          title: isPremium
-                              ? 'Premium Active'
-                              : 'Unlock Pro Version',
-                          subtitle: isPremium
-                              ? 'All features unlocked (Long press to reset)'
-                              : 'Get access to all premium features',
-                          onTap: null, // Handled by parent GestureDetector
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('✓ Premium Activated (Test)'),
+                                        backgroundColor: Color(0xFF40C463),
+                                        duration: Duration(seconds: 1),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF40C463).withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFF40C463).withValues(alpha: 0.5),
+                                    ),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      '🧪 Buy (Test)',
+                                      style: TextStyle(
+                                        color: Color(0xFF40C463),
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Cancel Premium Button
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () async {
+                                  // Reset premium status
+                                  final box = await Hive.openBox('premiumBox');
+                                  await box.put('isPremium', false);
+                                  await box.put('subscriptionType', null);
+                                  await box.put('expiryDate', null);
+                                  
+                                  // Force refresh by re-reading
+                                  ref.invalidate(premiumProvider);
+                                  
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: const Text('✗ Premium Cancelled (Test)'),
+                                        backgroundColor: Colors.red.shade700,
+                                        duration: const Duration(seconds: 1),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: Colors.red.withValues(alpha: 0.4),
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '🧪 Cancel (Test)',
+                                      style: TextStyle(
+                                        color: Colors.red.shade300,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: Text(
+                          'Testing controls - Remove before release',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.3),
+                            fontSize: 10,
+                          ),
                         ),
                       ),
                     ],
@@ -1051,63 +1134,106 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Widget _buildPremiumBanner(BuildContext context, AppThemeColor currentTheme) {
+    const greenAccent = Color(0xFF40C463);
+    
     return InkWell(
       onTap: () {
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (context) => const PremiumScreen()));
+        // Use new psychology-optimized paywall
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            opaque: false,
+            pageBuilder: (context, _, __) => const PremiumPaywallScreen(),
+            transitionsBuilder: (context, anim, _, child) {
+              return FadeTransition(opacity: anim, child: child);
+            },
+          ),
+        );
       },
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              currentTheme.color.withValues(alpha: 0.2),
-              currentTheme.color.withValues(alpha: 0.05),
+              greenAccent.withValues(alpha: 0.15),
+              greenAccent.withValues(alpha: 0.05),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: currentTheme.color.withValues(alpha: 0.3)),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: greenAccent.withValues(alpha: 0.4)),
         ),
         child: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: currentTheme.color.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF40C463), Color(0xFF30A14E)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: greenAccent.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                  ),
+                ],
               ),
-              child: Icon(Icons.star, color: currentTheme.color, size: 28),
+              child: const Icon(Icons.workspace_premium, color: Colors.white, size: 24),
             ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    children: [
+                      Text(
+                        'Go Premium',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '75% OFF',
+                          style: TextStyle(
+                            color: Colors.amber,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                   Text(
-                    'UNLOCK PREMIUM',
+                    'Unlock all themes, Deen Mode & more',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.2,
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 12,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Get all features & premium themes',
+                    '10K+ Muslims already upgraded ⭐',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w400,
+                      color: greenAccent.withValues(alpha: 0.7),
+                      fontSize: 11,
                     ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, color: currentTheme.color, size: 18),
+            Icon(Icons.chevron_right, color: greenAccent, size: 24),
           ],
         ),
       ),

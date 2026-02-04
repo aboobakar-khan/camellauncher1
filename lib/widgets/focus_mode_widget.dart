@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/focus_mode_provider.dart';
+import '../providers/premium_provider.dart';
 import '../providers/theme_provider.dart';
 import '../screens/focus_mode_screen.dart';
 import '../screens/focus_mode_settings_screen.dart';
+import '../screens/premium_paywall_screen.dart';
 
-/// Compact Focus Mode widget for Dashboard
+/// Focus Mode Widget - PREMIUM FEATURE
+/// Compact widget for Dashboard with premium gating
 class FocusModeWidget extends ConsumerWidget {
   final VoidCallback? onExpand;
 
@@ -16,7 +19,13 @@ class FocusModeWidget extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final focusMode = ref.watch(focusModeProvider);
     final themeColor = ref.watch(themeColorProvider);
+    final isPremium = ref.watch(premiumProvider).isPremium;
     final isActive = focusMode.isEnabled;
+
+    // If not premium, show locked state
+    if (!isPremium) {
+      return _buildLockedCard(context, themeColor);
+    }
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
@@ -127,6 +136,138 @@ class FocusModeWidget extends ConsumerWidget {
                   ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLockedCard(BuildContext context, AppThemeColor themeColor) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.mediumImpact();
+        showPremiumPaywall(
+          context,
+          triggerFeature: 'Focus Mode',
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(top: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey[900]?.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.05),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Locked icon
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF40C463).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Stack(
+                  children: [
+                    Icon(
+                      Icons.do_not_disturb_off_outlined,
+                      color: Colors.white.withValues(alpha: 0.3),
+                      size: 24,
+                    ),
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF40C463),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.lock,
+                          color: Colors.white,
+                          size: 10,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              const SizedBox(width: 16),
+              
+              // Text
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Focus Mode',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF40C463), Color(0xFF30A14E)],
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'PRO',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Block distracting apps and stay focused',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.3),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Unlock button
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF40C463).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: const Color(0xFF40C463).withValues(alpha: 0.4),
+                  ),
+                ),
+                child: const Text(
+                  'Unlock',
+                  style: TextStyle(
+                    color: Color(0xFF40C463),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
